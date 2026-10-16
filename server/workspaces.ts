@@ -146,9 +146,9 @@ async function reserveDirectory(
   generateName: () => string,
 ) {
   for (let attempt = 0; attempt < 32; attempt++) {
-    const name = `${projectName}-${generateName()}`;
+    const name = generateName();
     if (existingNames.has(name)) continue;
-    const directory = join(root, name);
+    const directory = join(root, `${projectName}-${name}`);
     try {
       await mkdir(directory);
       return { name, directory };
@@ -305,7 +305,13 @@ async function archiveWorkspaceDirectory({
     throw error;
   }
   const ownership = ownershipSchema.parse(JSON.parse(contents));
-  if (ownership.directory !== directory || ownership.name !== basename(directory)) {
+  // Existing markers use the full directory name; new ones use the short jj name.
+  // The registered workspace root is also checked below before removing anything.
+  const directoryName = basename(directory);
+  if (
+    ownership.directory !== directory ||
+    (ownership.name !== directoryName && !directoryName.endsWith(`-${ownership.name}`))
+  ) {
     throw new Error(
       `paseo-jj-workspace ownership does not match ${directory}; leaving it untouched.`,
     );

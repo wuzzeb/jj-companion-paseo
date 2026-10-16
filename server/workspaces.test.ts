@@ -81,13 +81,25 @@ test("creates a registered jj workspace from the source parents and preserves th
   assert.equal(result.source.kind, "directory");
   if (result.source.kind !== "directory") throw new Error("Expected directory source");
   const destination = result.source.path;
-  const name = basename(destination);
-  assert.match(name, /^My-app-[a-z]+-[a-z]+$/);
-  assert.equal(destination, join(workspacesRoot, name));
+  const directoryName = basename(destination);
+  const name = directoryName.slice("My-app-".length);
+  assert.match(name, /^[a-z]+-[a-z]+$/);
+  assert.equal(destination, join(workspacesRoot, `My-app-${name}`));
   assert.equal(result.source.projectId, "project");
   assert.deepEqual({ ...result, source: request.source }, request);
   assert.equal(await jj(destination, "root"), destination);
-  assert.match(await jj(repo, "workspace", "list"), new RegExp(name));
+  assert.deepEqual(
+    (await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"')).split("\n").sort(),
+    ["default", name].sort(),
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(join(destination, ".jj", "paseo-jj-workspace-plugin.json"), "utf8")),
+    {
+      version: 1,
+      name,
+      directory: destination,
+    },
+  );
   assert.equal(await readFile(join(destination, "base.txt"), "utf8"), "committed\n");
   await assert.rejects(readFile(join(destination, "source-only.txt")), { code: "ENOENT" });
   assert.match(await readFile(join(destination, ".git"), "utf8"), /^gitdir: /);
@@ -227,7 +239,7 @@ test("retries name collisions without modifying existing directories or workspac
   const { directory, repo, workspacesRoot } = await repository(t);
   await mkdir(join(workspacesRoot, "My-app-quiet-otter"), { recursive: true });
   await writeFile(join(workspacesRoot, "My-app-quiet-otter", "keep.txt"), "keep\n");
-  await jj(repo, "workspace", "add", "--name", "My-app-calm-fox", join(directory, "elsewhere"));
+  await jj(repo, "workspace", "add", "--name", "calm-fox", join(directory, "elsewhere"));
   const names = ["quiet-otter", "calm-fox", "bright-owl"];
   const result = await createWorkspace({
     request: { source: { kind: "directory", path: repo, projectId: "project" } },
@@ -245,9 +257,41 @@ test("retries name collisions without modifying existing directories or workspac
     "keep\n",
   );
   assert.equal(
-    await jj(repo, "workspace", "root", "--name", "My-app-calm-fox"),
+    await jj(repo, "workspace", "root", "--name", "calm-fox"),
     join(directory, "elsewhere"),
   );
+});
+
+test("archives existing workspaces whose jj name includes the project prefix", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  const name = "My-app-quiet-otter";
+  const destination = join(workspacesRoot, name);
+  await mkdir(workspacesRoot);
+  await jj(repo, "workspace", "add", "--name", name, destination);
+  await writeFile(
+    join(destination, ".jj", "paseo-jj-workspace-plugin.json"),
+    JSON.stringify({ version: 1, name, directory: destination }),
+  );
+  await archiveWorkspace(archiveOptions(destination, workspacesRoot));
+  await assert.rejects(readdir(destination), { code: "ENOENT" });
+  assert.equal(await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"'), "default");
+});
+
+test("refuses cleanup when a short name is registered to another directory", async (t) => {
+  const { directory, repo, destination, workspacesRoot } = await managedWorkspace(t);
+  const name = basename(destination).slice("My-app-".length).split("-").at(-1)!;
+  const elsewhere = join(directory, "elsewhere");
+  await jj(repo, "workspace", "add", "--name", name, elsewhere);
+  await writeFile(
+    join(destination, ".jj", "paseo-jj-workspace-plugin.json"),
+    JSON.stringify({ version: 1, name, directory: destination }),
+  );
+  await assert.rejects(
+    archiveWorkspace(archiveOptions(destination, workspacesRoot)),
+    /points elsewhere/,
+  );
+  assert.equal(await jj(destination, "root"), destination);
+  assert.equal(await jj(elsewhere, "root"), elsewhere);
 });
 
 for (const colocated of [true, false]) {

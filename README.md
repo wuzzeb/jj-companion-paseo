@@ -45,6 +45,38 @@ Paseo must have plugins enabled (`pluginsEnabled: true` in its config). Reload a
 paseo plugin reload jj-workspace
 ```
 
+Configure repository lifecycle commands in `paseo.json`:
+
+```json
+{
+  "worktree": {
+    "setup": ["node scripts/workspace-setup.mjs"],
+    "teardown": "node scripts/workspace-teardown.mjs"
+  }
+}
+```
+
+Both fields accept a command string or an array of commands. The plugin reads `paseo.json` from the
+jj workspace root and runs commands sequentially there, even when the selected directory is a
+subdirectory. Setup completes before the directory is handed to Paseo, so it can prepare local
+configuration before the first agent starts. Commands use non-interactive Bash on Unix and
+PowerShell on Windows. Output appears in `paseo plugin logs jj-workspace`.
+
+Commands inherit the daemon environment, with these values set by the plugin:
+
+- `PASEO_WORKTREE_PATH`: the new jj workspace root.
+- `PASEO_SOURCE_CHECKOUT_PATH`: the source jj checkout used to create the workspace.
+- `PASEO_ROOT_PATH`: an alias for `PASEO_SOURCE_CHECKOUT_PATH`.
+- `PASEO_BRANCH_NAME`: the jj workspace name, such as `quiet-otter`.
+
+The plugin does not allocate `PASEO_WORKTREE_PORT`. Existing ownership markers without a recorded
+source checkout infer it from the shared `.jj/repo` path when running teardown.
+
+If setup fails, creation fails and leaves the marked workspace for inspection and manual cleanup.
+The remaining commands are skipped. Teardown runs only after ownership and active-workspace checks
+pass, immediately before `jj workspace remove`. If teardown fails, removal stops and the workspace
+is retained. Teardown commands should tolerate retries after a partial failure.
+
 Archiving runs `jj workspace remove` after checking that no other active Paseo workspace uses the
 directory, including subdirectories and background workspaces. jj snapshots the working-copy state,
 removes the workspace and its Git worktree registration, and deletes the directory. Ignored files
@@ -59,9 +91,10 @@ immediately. A later Paseo failure can still leave an orphan: the before-hook ha
 that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep.
 Paseo's restore action does not recreate a directory removed by this plugin.
 
-Paseo limits hook invocations to 30 seconds. The plugin passes the cancellation signal to jj, and
-caps each jj command at 25 seconds. These limits can interrupt creation in a large repository;
-partially created workspaces may require manual cleanup.
+Paseo limits hook invocations to 30 seconds in total. The plugin passes the cancellation signal to
+jj and lifecycle commands, and caps each command at 25 seconds. Keep setup and teardown within that
+total budget. These limits can interrupt creation in a large repository; partially created
+workspaces may require manual cleanup.
 
 This plugin only intercepts explicit workspace creation; opening an existing workspace and bare
 `paseo run` do not run this hook. Colocated workspaces expose Git status and diffs, while Git branch

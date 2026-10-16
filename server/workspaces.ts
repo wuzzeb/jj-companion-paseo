@@ -10,6 +10,7 @@ import type {
   PluginHookWorkspace,
 } from "@getpaseo/plugin/server";
 import { createNameId } from "./names.js";
+import { runWorktreeLifecycle } from "./lifecycle.js";
 
 const execFileAsync = promisify(execFile);
 const ownershipSchema = z
@@ -17,6 +18,7 @@ const ownershipSchema = z
     version: z.literal(1),
     name: z.string().min(1),
     directory: z.string().min(1),
+    sourceDirectory: z.string().min(1).optional(),
   })
   .strict();
 const markerName = "paseo-jj-workspace-plugin.json";
@@ -248,7 +250,7 @@ export async function createWorkspace({
   try {
     await writeMarker(
       join(directory, ".jj", markerName),
-      JSON.stringify({ version: 1, name, directory }),
+      JSON.stringify({ version: 1, name, directory, sourceDirectory: jjRoot }),
       { flag: "wx", signal },
     );
     signal.throwIfAborted();
@@ -265,6 +267,13 @@ export async function createWorkspace({
     }
     throw error;
   }
+  await runWorktreeLifecycle({
+    phase: "setup",
+    directory,
+    name,
+    sourceDirectory: jjRoot,
+    signal,
+  });
   console.info(`paseo-jj-workspace created ${directory}`);
 
   return {
@@ -346,6 +355,13 @@ async function archiveWorkspaceDirectory({
   if ((await realpath(registeredRoot)) !== directory) {
     throw new Error(`jj workspace ${ownership.name} points elsewhere; skipping cleanup.`);
   }
+  await runWorktreeLifecycle({
+    phase: "teardown",
+    directory,
+    name: ownership.name,
+    sourceDirectory: ownership.sourceDirectory,
+    signal,
+  });
   await jj(directory, signal, "workspace", "remove", ownership.name);
   console.info(`paseo-jj-workspace removed ${directory}`);
 }

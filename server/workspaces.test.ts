@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { after, test, type TestContext } from "node:test";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import type { PluginBeforeRequests, PluginHookContext } from "@getpaseo/plugin/server";
 import { archiveWorkspace, createWorkspace } from "./workspaces.js";
+import { runWorktreeLifecycle } from "./lifecycle.js";
 
 const execFileAsync = promisify(execFile);
 type PaseoWorkspaceListOptions = NonNullable<
@@ -98,6 +100,7 @@ test("creates a registered jj workspace from the source parents and preserves th
       version: 1,
       name,
       directory: destination,
+      sourceDirectory: repo,
     },
   );
   assert.equal(await readFile(join(destination, "base.txt"), "utf8"), "committed\n");
@@ -234,6 +237,199 @@ async function managedWorkspace(t: TestContext, colocated = true) {
   if (result.source.kind !== "directory") throw new Error("Expected directory source");
   return { ...paths, destination: result.source.path };
 }
+
+function nodeCommand(script: string): string {
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  return `${quote(process.execPath)} -e ${quote(script)}`;
+}
+
+for (const colocated of [true, false]) {
+  test(`runs repository setup before returning and teardown only on final removal (${colocated ? "colocated" : "non-colocated"})`, async (t) => {
+    const { repo, workspacesRoot } = await repository(t, colocated);
+    const recordEnvironment = `
+      const fs = require('node:fs');
+      fs.writeFileSync('setup.json', JSON.stringify({
+        cwd: process.cwd(),
+        source: process.env.PASEO_SOURCE_CHECKOUT_PATH,
+        root: process.env.PASEO_ROOT_PATH,
+        workspace: process.env.PASEO_WORKTREE_PATH,
+        name: process.env.PASEO_BRANCH_NAME,
+      }));
+    `;
+    const teardown = nodeCommand(`
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const setup = JSON.parse(fs.readFileSync('setup.json', 'utf8'));
+      if (setup.workspace !== process.env.PASEO_WORKTREE_PATH ||
+          setup.source !== process.env.PASEO_SOURCE_CHECKOUT_PATH ||
+          setup.cwd !== process.cwd()) throw new Error('environment changed');
+      fs.appendFileSync(path.join(process.env.PASEO_SOURCE_CHECKOUT_PATH, 'teardown.txt'), 'done\\n');
+    `);
+    await writeFile(
+      join(repo, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          setup: colocated
+            ? [" ", nodeCommand(recordEnvironment), "test -f setup.json", ""]
+            : nodeCommand(recordEnvironment),
+          teardown: colocated ? teardown : ["test -f setup.json", teardown],
+        },
+      }),
+    );
+    await jj(repo, "new", "-m", "lifecycle config is in the parent");
+    const result = await createWorkspace({
+      request: { source: { kind: "directory", path: join(repo, "package") } },
+      ...options(repo, workspacesRoot),
+      generateName: () => "quiet-jay",
+    });
+    if (result.source.kind !== "directory") throw new Error("Expected directory source");
+    const destination = join(workspacesRoot, "My-app-quiet-jay");
+    assert.equal(result.source.path, join(destination, "package"));
+    assert.deepEqual(JSON.parse(await readFile(join(destination, "setup.json"), "utf8")), {
+      cwd: destination,
+      source: repo,
+      root: repo,
+      workspace: destination,
+      name: "quiet-jay",
+    });
+    await archiveWorkspace({
+      ...archiveOptions(destination, workspacesRoot),
+      listWorkspaces: async () => ({
+        entries: [{ workspaceDirectory: join(destination, "package") }],
+        pageInfo: { hasMore: false, nextCursor: null, prevCursor: null },
+      }),
+    });
+    await assert.rejects(readFile(join(repo, "teardown.txt")), { code: "ENOENT" });
+    await Promise.all([
+      archiveWorkspace(archiveOptions(destination, workspacesRoot)),
+      archiveWorkspace(archiveOptions(destination, workspacesRoot)),
+    ]);
+    assert.equal(await readFile(join(repo, "teardown.txt"), "utf8"), "done\n");
+    await assert.rejects(readdir(destination), { code: "ENOENT" });
+  });
+}
+
+test("stops failed setup commands and preserves the owned workspace for recovery", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  await writeFile(
+    join(repo, "paseo.json"),
+    JSON.stringify({ worktree: { setup: ["touch started", "exit 7", "touch should-not-run"] } }),
+  );
+  await jj(repo, "new", "-m", "lifecycle config is in the parent");
+  await assert.rejects(
+    createWorkspace({
+      request: { source: { kind: "directory", path: repo } },
+      ...options(repo, workspacesRoot),
+      generateName: () => "failed-jay",
+    }),
+    /worktree.setup failed/,
+  );
+  const destination = join(workspacesRoot, "My-app-failed-jay");
+  assert.equal(await readFile(join(destination, "started"), "utf8"), "");
+  await assert.rejects(readFile(join(destination, "should-not-run")), { code: "ENOENT" });
+  assert.equal(await jj(destination, "workspace", "root", "--name", "failed-jay"), destination);
+  await readFile(join(destination, ".jj", "paseo-jj-workspace-plugin.json"));
+});
+
+test("teardown failure preserves the workspace and can be retried", async (t) => {
+  const { repo, destination, workspacesRoot } = await managedWorkspace(t);
+  await writeFile(
+    join(destination, "paseo.json"),
+    JSON.stringify({ worktree: { teardown: "exit 7" } }),
+  );
+  await assert.rejects(
+    archiveWorkspace(archiveOptions(destination, workspacesRoot)),
+    /worktree.teardown failed/,
+  );
+  assert.equal(await jj(destination, "root"), destination);
+  await writeFile(join(destination, "paseo.json"), JSON.stringify({ worktree: { teardown: [] } }));
+  await archiveWorkspace(archiveOptions(destination, workspacesRoot));
+  await assert.rejects(readdir(destination), { code: "ENOENT" });
+  assert.equal(await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"'), "default");
+});
+
+test("runs teardown for older ownership markers without a recorded source directory", async (t) => {
+  const { repo, destination, workspacesRoot } = await managedWorkspace(t, false);
+  const marker = join(destination, ".jj", "paseo-jj-workspace-plugin.json");
+  const ownership = JSON.parse(await readFile(marker, "utf8"));
+  delete ownership.sourceDirectory;
+  await writeFile(marker, JSON.stringify(ownership));
+  await writeFile(
+    join(destination, "paseo.json"),
+    JSON.stringify({
+      worktree: {
+        teardown: nodeCommand(`
+          require('node:fs').writeFileSync(
+            require('node:path').join(process.env.PASEO_SOURCE_CHECKOUT_PATH, 'legacy-source.txt'),
+            process.env.PASEO_ROOT_PATH);
+        `),
+      },
+    }),
+  );
+  await archiveWorkspace(archiveOptions(destination, workspacesRoot));
+  assert.equal(await readFile(join(repo, "legacy-source.txt"), "utf8"), repo);
+});
+
+test("rejects malformed lifecycle configuration instead of skipping setup", async (t) => {
+  const { repo } = await fixture(t);
+  for (const contents of ["{broken json", JSON.stringify({ worktree: { setup: 42 } })]) {
+    await writeFile(join(repo, "paseo.json"), contents);
+    await assert.rejects(
+      runWorktreeLifecycle({
+        phase: "setup",
+        directory: repo,
+        sourceDirectory: repo,
+        name: "quiet-jay",
+        signal: AbortSignal.timeout(5_000),
+      }),
+    );
+  }
+});
+
+test("cancels a running setup command and its shell children", async (t) => {
+  const { repo } = await fixture(t);
+  const controller = new AbortController();
+  const script = `
+    const fs = require('node:fs');
+    process.once('SIGTERM', () => { fs.writeFileSync('stopped', 'yes'); process.exit(0); });
+    fs.writeFileSync('ready', 'yes');
+    setInterval(() => {}, 1000);
+  `;
+  await writeFile(
+    join(repo, "paseo.json"),
+    JSON.stringify({ worktree: { setup: `${nodeCommand(script)} & wait` } }),
+  );
+  const running = runWorktreeLifecycle({
+    phase: "setup",
+    directory: repo,
+    sourceDirectory: repo,
+    name: "quiet-jay",
+    signal: controller.signal,
+  });
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await readFile(join(repo, "ready"));
+        break;
+      } catch (error) {
+        if (attempt >= 100) throw error;
+        await delay(10);
+      }
+    }
+  } finally {
+    controller.abort();
+  }
+  await assert.rejects(running, { name: "AbortError" });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      assert.equal(await readFile(join(repo, "stopped"), "utf8"), "yes");
+      break;
+    } catch (error) {
+      if (attempt >= 100) throw error;
+      await delay(10);
+    }
+  }
+});
 
 test("retries name collisions without modifying existing directories or workspace registrations", async (t) => {
   const { directory, repo, workspacesRoot } = await repository(t);

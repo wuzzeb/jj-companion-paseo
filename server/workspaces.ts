@@ -26,7 +26,8 @@ type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
 type WorkspacePage = Pick<WorkspaceListResult, "pageInfo"> & {
   entries: Pick<WorkspaceListResult["entries"][number], "workspaceDirectory">[];
 };
-// The reference daemon supports this field; published 0.11.2 declarations predate it.
+// Paseo 0.11.2 lists all active workspaces and has no background feature. Newer
+// daemons need this option; their host-provided SDK forwards it to the daemon.
 type WorkspaceListOptions = NonNullable<Parameters<ListWorkspaces>[0]> & {
   includeBackground: true;
 };
@@ -37,6 +38,7 @@ interface CreateWorkspaceOptions {
   listProjects: PluginHookContext["paseo"]["projects"]["list"];
   workspacesRoot?: string;
   generateName?: () => string;
+  writeMarker?: typeof writeFile;
 }
 
 interface ArchiveWorkspaceOptions {
@@ -55,7 +57,7 @@ function expandHome(path: string): string {
   return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
 }
 
-function hasCode(error: unknown, code: string): boolean {
+function hasCode(error: unknown, code: string | number): boolean {
   return error instanceof Error && "code" in error && error.code === code;
 }
 
@@ -102,6 +104,41 @@ async function jj(cwd: string, signal: AbortSignal, ...args: string[]): Promise<
   return stdout.trim();
 }
 
+async function resolveBaseRevision(
+  jjRoot: string,
+  signal: AbortSignal,
+  base: string,
+): Promise<string> {
+  const gitRoot = await jj(jjRoot, signal, "git", "root", "--ignore-working-copy");
+  const refs = base.startsWith("refs/")
+    ? [base]
+    : [`refs/heads/${base}`, `refs/remotes/${base}`, `refs/remotes/origin/${base}`];
+  for (const ref of refs) {
+    signal.throwIfAborted();
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        [
+          "--git-dir",
+          gitRoot,
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          "--end-of-options",
+          `${ref}^{commit}`,
+        ],
+        { cwd: jjRoot, signal, timeout: 25_000, maxBuffer: 1024 * 1024 },
+      );
+      return stdout.trim();
+    } catch (error) {
+      if (!hasCode(error, 1)) throw error;
+    }
+  }
+  throw new Error(
+    `Git base branch ${JSON.stringify(base)} was not found locally. Fetch or create it before creating the workspace.`,
+  );
+}
+
 async function reserveDirectory(
   root: string,
   projectName: string,
@@ -128,6 +165,7 @@ export async function createWorkspace({
   listProjects,
   workspacesRoot = defaultWorkspacesRoot(),
   generateName = createNameId,
+  writeMarker = writeFile,
 }: CreateWorkspaceOptions): Promise<WorkspaceRequest> {
   signal.throwIfAborted();
   const source = request.source;
@@ -158,6 +196,16 @@ export async function createWorkspace({
     );
   }
 
+  if (source.kind === "worktree" && source.branchName) {
+    console.info(
+      "paseo-jj creates a jj workspace without creating a new Git branch or jj bookmark.",
+    );
+  }
+
+  const base =
+    source.kind === "worktree" ? source.refName?.trim() || source.baseBranch?.trim() : undefined;
+  const revision = base ? await resolveBaseRevision(jjRoot, signal, base) : undefined;
+
   const projectName =
     basename(project?.projectRootPath ?? jjRoot)
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
@@ -178,7 +226,16 @@ export async function createWorkspace({
     generateName,
   );
   try {
-    await jj(jjRoot, signal, "workspace", "add", "--name", name, directory);
+    await jj(
+      jjRoot,
+      signal,
+      "workspace",
+      "add",
+      "--name",
+      name,
+      ...(revision ? ["-r", revision] : []),
+      directory,
+    );
   } catch (error) {
     // Remove only our empty reservation. Leave partially created workspaces for inspection.
     await rmdir(directory).catch((cleanupError: unknown) => {
@@ -188,11 +245,26 @@ export async function createWorkspace({
     });
     throw error;
   }
-  await writeFile(
-    join(directory, ".jj", markerName),
-    JSON.stringify({ version: 1, name, directory }),
-    { flag: "wx" },
-  );
+  try {
+    await writeMarker(
+      join(directory, ".jj", markerName),
+      JSON.stringify({ version: 1, name, directory }),
+      { flag: "wx", signal },
+    );
+    signal.throwIfAborted();
+  } catch (error) {
+    // This hook has not handed the directory to Paseo yet. A separate, bounded
+    // signal permits rollback even when the creation invocation was canceled.
+    try {
+      await jj(directory, AbortSignal.timeout(4_000), "workspace", "remove", name);
+    } catch (cleanupError) {
+      console.error(
+        `paseo-jj failed to roll back ${directory}; remove jj workspace ${name} manually.`,
+        cleanupError,
+      );
+    }
+    throw error;
+  }
   console.info(`paseo-jj created ${directory}`);
 
   return {

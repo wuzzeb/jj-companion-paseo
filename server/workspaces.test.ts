@@ -120,7 +120,7 @@ test("preserves a subdirectory selected through a symlink in a non-colocated rep
 test("converts project-only Worktree requests and uses unique names for concurrent creation", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
   const request: PluginBeforeRequests["workspace.create"] = {
-    source: { kind: "worktree", projectId: "project", action: "branch-off", baseBranch: "ignored" },
+    source: { kind: "worktree", projectId: "project", action: "branch-off" },
   };
   const results = await Promise.all([
     createWorkspace({ request, ...options(repo, workspacesRoot) }),
@@ -437,4 +437,115 @@ test("preserves a workspace restored before its archive event is handled", async
     }),
   });
   assert.equal(await readFile(join(destination, "base.txt"), "utf8"), "committed\n");
+});
+
+test("rolls back a new jj workspace if writing its ownership marker fails", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  await assert.rejects(
+    createWorkspace({
+      request: { source: { kind: "directory", path: repo, projectId: "project" } },
+      ...options(repo, workspacesRoot),
+      writeMarker: async () => {
+        throw new Error("Disk full while writing ownership marker");
+      },
+    }),
+    /Disk full while writing ownership marker/,
+  );
+  assert.deepEqual(await readdir(workspacesRoot), []);
+  assert.equal(await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"'), "default");
+  const gitWorktrees = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
+    cwd: repo,
+  });
+  assert.equal(gitWorktrees.stdout.includes(workspacesRoot), false);
+});
+
+test("rolls back a new workspace if creation is canceled after jj workspace add succeeds", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  const controller = new AbortController();
+  await assert.rejects(
+    createWorkspace({
+      request: { source: { kind: "directory", path: repo, projectId: "project" } },
+      ...options(repo, workspacesRoot),
+      signal: controller.signal,
+      writeMarker: async (...args) => {
+        await writeFile(...args);
+        controller.abort();
+      },
+    }),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(await readdir(workspacesRoot), []);
+  assert.equal(await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"'), "default");
+});
+
+test("honors the local and remote Git refs supplied by Paseo's branch picker", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  const base = await jj(repo, "log", "--no-graph", "-r", "@-", "-T", "commit_id");
+  const remoteBase = await jj(repo, "log", "--no-graph", "-r", "@", "-T", "commit_id");
+  await execFileAsync("git", ["update-ref", "refs/heads/main", base], { cwd: repo });
+  await execFileAsync("git", ["update-ref", "refs/remotes/origin/main", remoteBase], { cwd: repo });
+  await jj(repo, "new", "-m", "feature parent");
+  const sourceParent = await jj(repo, "log", "--no-graph", "-r", "@-", "-T", "commit_id");
+  assert.notEqual(sourceParent, base);
+
+  for (const selection of [
+    { refName: "refs/heads/main", revision: base, content: "committed\n" },
+    { refName: "refs/remotes/origin/main", revision: remoteBase, content: "uncommitted\n" },
+    { refName: "main", revision: base, content: "committed\n" },
+    { refName: "origin/main", revision: remoteBase, content: "uncommitted\n" },
+  ]) {
+    const result = await createWorkspace({
+      request: {
+        source: {
+          kind: "worktree",
+          cwd: repo,
+          projectId: "project",
+          action: "branch-off",
+          refName: selection.refName,
+          baseBranch: "ignored-because-refName-is-supplied",
+        },
+      },
+      ...options(repo, workspacesRoot),
+    });
+    if (result.source.kind !== "directory") throw new Error("Expected directory source");
+    assert.equal(
+      await jj(result.source.path, "log", "--no-graph", "-r", "@-", "-T", "commit_id"),
+      selection.revision,
+    );
+    assert.equal(await readFile(join(result.source.path, "base.txt"), "utf8"), selection.content);
+  }
+});
+
+test("resolves baseBranch through the backing Git store for non-colocated repos", async (t) => {
+  const { repo, workspacesRoot } = await repository(t, false);
+  const gitRoot = await jj(repo, "git", "root");
+  const base = await jj(repo, "log", "--no-graph", "-r", "@-", "-T", "commit_id");
+  await execFileAsync(
+    "git",
+    ["--git-dir", gitRoot, "update-ref", "refs/remotes/origin/main", base],
+    { cwd: repo },
+  );
+  await jj(repo, "new", "-m", "feature parent");
+  const result = await createWorkspace({
+    request: { source: { kind: "worktree", cwd: repo, baseBranch: "main" } },
+    ...options(repo, workspacesRoot),
+  });
+  if (result.source.kind !== "directory") throw new Error("Expected directory source");
+  assert.equal(
+    await jj(result.source.path, "log", "--no-graph", "-r", "@-", "-T", "commit_id"),
+    base,
+  );
+});
+
+test("rejects an unknown base without leaving a workspace or falling back to source parents", async (t) => {
+  const { repo, workspacesRoot } = await repository(t);
+  await assert.rejects(
+    createWorkspace({
+      request: { source: { kind: "worktree", cwd: repo, refName: "missing-branch" } },
+      ...options(repo, workspacesRoot),
+    }),
+    /Git base branch "missing-branch" was not found locally/,
+  );
+  await assert.rejects(readdir(workspacesRoot), { code: "ENOENT" });
+  assert.equal(await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"'), "default");
 });

@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 type PaseoWorkspaceListOptions = NonNullable<
   Parameters<PluginHookContext["paseo"]["workspaces"]["list"]>[0]
 >;
-const configDirectory = await mkdtemp(join(tmpdir(), "paseo-jj-config-"));
+const configDirectory = await mkdtemp(join(tmpdir(), "paseo-jj-workspace-config-"));
 const configPath = join(configDirectory, "config.toml");
 await writeFile(configPath, '[user]\nname = "Test"\nemail = "test@example.invalid"\n');
 const previousConfig = process.env.JJ_CONFIG;
@@ -29,7 +29,7 @@ async function jj(cwd: string, ...args: string[]) {
 }
 
 async function fixture(t: TestContext) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-workspace-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repo = join(directory, "My app");
   const workspacesRoot = join(directory, "workspaces");
@@ -325,7 +325,7 @@ test("does not remove unmarked jj workspaces or directories outside the managed 
 test("rejects mismatched ownership markers and leaves the workspace intact", async (t) => {
   const { destination, workspacesRoot } = await managedWorkspace(t);
   await writeFile(
-    join(destination, ".jj", "paseo-jj.json"),
+    join(destination, ".jj", "paseo-jj-workspace-plugin.json"),
     JSON.stringify({
       version: 1,
       name: "default",

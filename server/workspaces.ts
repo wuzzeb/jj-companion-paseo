@@ -19,7 +19,7 @@ const ownershipSchema = z
     directory: z.string().min(1),
   })
   .strict();
-const markerName = "paseo-jj.json";
+const markerName = "paseo-jj-workspace-plugin.json";
 type WorkspaceRequest = PluginBeforeRequests["workspace.create"];
 type ListWorkspaces = PluginHookContext["paseo"]["workspaces"]["list"];
 type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
@@ -192,13 +192,13 @@ export async function createWorkspace({
     (source.action === "checkout" || source.checkoutSource || source.githubPrNumber !== undefined)
   ) {
     throw new Error(
-      "paseo-jj cannot check out Git branches or pull requests; create a new workspace instead.",
+      "paseo-jj-workspace cannot check out Git branches or pull requests; create a new workspace instead.",
     );
   }
 
   if (source.kind === "worktree" && source.branchName) {
     console.info(
-      "paseo-jj creates a jj workspace without creating a new Git branch or jj bookmark.",
+      "paseo-jj-workspace creates a jj workspace without creating a new Git branch or jj bookmark.",
     );
   }
 
@@ -240,7 +240,7 @@ export async function createWorkspace({
     // Remove only our empty reservation. Leave partially created workspaces for inspection.
     await rmdir(directory).catch((cleanupError: unknown) => {
       if (!hasCode(cleanupError, "ENOENT") && !hasCode(cleanupError, "ENOTEMPTY")) {
-        console.error(`paseo-jj could not release ${directory}`, cleanupError);
+        console.error(`paseo-jj-workspace could not release ${directory}`, cleanupError);
       }
     });
     throw error;
@@ -259,13 +259,13 @@ export async function createWorkspace({
       await jj(directory, AbortSignal.timeout(4_000), "workspace", "remove", name);
     } catch (cleanupError) {
       console.error(
-        `paseo-jj failed to roll back ${directory}; remove jj workspace ${name} manually.`,
+        `paseo-jj-workspace failed to roll back ${directory}; remove jj workspace ${name} manually.`,
         cleanupError,
       );
     }
     throw error;
   }
-  console.info(`paseo-jj created ${directory}`);
+  console.info(`paseo-jj-workspace created ${directory}`);
 
   return {
     ...request,
@@ -306,7 +306,9 @@ async function archiveWorkspaceDirectory({
   }
   const ownership = ownershipSchema.parse(JSON.parse(contents));
   if (ownership.directory !== directory || ownership.name !== basename(directory)) {
-    throw new Error(`paseo-jj ownership does not match ${directory}; leaving it untouched.`);
+    throw new Error(
+      `paseo-jj-workspace ownership does not match ${directory}; leaving it untouched.`,
+    );
   }
 
   let cursor: string | undefined;
@@ -339,7 +341,7 @@ async function archiveWorkspaceDirectory({
     throw new Error(`jj workspace ${ownership.name} points elsewhere; skipping cleanup.`);
   }
   await jj(directory, signal, "workspace", "remove", ownership.name);
-  console.info(`paseo-jj removed ${directory}`);
+  console.info(`paseo-jj-workspace removed ${directory}`);
 }
 
 // Archive events can overlap, including several records sharing one directory.

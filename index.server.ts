@@ -1,7 +1,10 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { archiveWorkspace, createWorkspace } from "./server/workspaces.js";
+import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./server/workspaces.js";
 
 export default function contribute(server: PluginServerContext) {
+  server.before("agent.create", ({ request }, context) =>
+    configureCodexAgent({ request, signal: context.signal }),
+  );
   server.before("workspace.create", ({ request }, context) =>
     createWorkspace({
       request,

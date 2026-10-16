@@ -96,8 +96,8 @@ jj and lifecycle commands, and caps each command at 25 seconds. Keep setup and t
 total budget. These limits can interrupt creation in a large repository; partially created
 workspaces may require manual cleanup.
 
-This plugin only intercepts explicit workspace creation; opening an existing workspace and bare
-`paseo run` do not run this hook. Colocated workspaces expose Git status and diffs, while Git branch
+The workspace-creation hook only runs for explicit creation; opening an existing workspace and bare
+`paseo run` do not run that hook. Colocated workspaces expose Git status and diffs, while Git branch
 and PR workflows retain the limitations of jj's detached Git HEAD.
 
 For development (Node.js 22 or later, plus jj):
@@ -108,5 +108,19 @@ pnpm typecheck
 pnpm lint
 pnpm test
 ```
+
+For Codex agents opened in a jj workspace, the `agent.create` hook adds the shared `.jj` directory,
+the common Git directory, and the exact Git worktree directory to
+`sandbox_workspace_write.writable_roots`. Codex protects a `.git` pointer's destination even when
+its parent is writable, so the exact worktree directory is necessary.
+
+Writable-root arrays replace each other in Codex. To preserve configured roots such as pnpm caches,
+the hook first reads Codex's effective user/project configuration through a short-lived
+`codex app-server` using `config/read`, then unions those roots with per-agent roots and the jj/Git
+paths. This starts no thread or model request and edits no configuration files. Other options,
+including network access, approval policy, and sandbox mode, are left as configured. Codex must be
+on the daemon's PATH. Daemon-wide Paseo provider writable-root defaults are not exposed to this
+hook; keep those roots in Codex configuration or per-agent options instead. The merged roots are
+saved with the new agent; existing agents need to be recreated to receive them.
 
 The `paseo/` directory is an ignored reference checkout, not part of the plugin.

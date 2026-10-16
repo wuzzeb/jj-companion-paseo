@@ -7,8 +7,9 @@ import { after, test, type TestContext } from "node:test";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import type { PluginBeforeRequests, PluginHookContext } from "@getpaseo/plugin/server";
-import { archiveWorkspace, createWorkspace } from "./workspaces.js";
+import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./workspaces.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
+import { readCodexWritableRoots } from "./codex-config.js";
 
 const execFileAsync = promisify(execFile);
 type PaseoWorkspaceListOptions = NonNullable<
@@ -69,6 +70,149 @@ function options(repo: string, workspacesRoot: string) {
     }),
   };
 }
+
+test("Codex roots preserve config and agent roots and include the exact linked Git directory", async (t) => {
+  const { directory, repo } = await repository(t);
+  const workspace = join(directory, "linked workspace");
+  await jj(repo, "workspace", "add", workspace);
+  const alias = join(directory, "linked-alias");
+  await symlink(workspace, alias);
+  const commonGit = join(repo, ".git");
+  const { stdout } = await execFileAsync("git", ["rev-parse", "--absolute-git-dir"], {
+    cwd: workspace,
+  });
+  const request: PluginBeforeRequests["agent.create"] = {
+    config: {
+      provider: "codex",
+      cwd: join(alias, "package"),
+      modeId: "auto",
+      model: "test-model",
+      providerOptions: {
+        approval_policy: "on-request",
+        sandbox_workspace_write: {
+          writable_roots: ["/agent-cache", commonGit],
+          network_access: false,
+        },
+      },
+    },
+    env: { CODEX_HOME: "/custom-codex-home" },
+  };
+  const original = structuredClone(request);
+  const result = await configureCodexAgent({
+    request,
+    signal: new AbortController().signal,
+    readWritableRoots: async ({ cwd, env }) => {
+      assert.equal(cwd, join(workspace, "package"));
+      assert.equal(env?.CODEX_HOME, request.env?.CODEX_HOME);
+      return ["/pnpm-cache", commonGit];
+    },
+  });
+  assert.deepEqual(request, original);
+  assert.deepEqual(result, {
+    ...request,
+    config: {
+      ...request.config,
+      providerOptions: {
+        ...request.config.providerOptions,
+        sandbox_workspace_write: {
+          network_access: false,
+          writable_roots: [
+            "/pnpm-cache",
+            commonGit,
+            "/agent-cache",
+            join(repo, ".jj"),
+            stdout.trim(),
+          ],
+        },
+      },
+    },
+  });
+});
+
+test("Codex roots support non-colocated and primary jj workspaces", async (t) => {
+  const { directory, repo } = await repository(t, false);
+  const workspace = join(directory, "linked");
+  await jj(repo, "workspace", "add", workspace);
+  for (const cwd of [repo, workspace]) {
+    const result = await configureCodexAgent({
+      request: { config: { provider: "codex", cwd } },
+      signal: new AbortController().signal,
+      readWritableRoots: async () => [],
+    });
+    assert.deepEqual(result.config.providerOptions, {
+      sandbox_workspace_write: { writable_roots: [join(repo, ".jj")] },
+    });
+  }
+});
+
+test("Codex hook leaves other providers and ordinary Git repositories untouched", async (t) => {
+  const { repo } = await fixture(t);
+  await execFileAsync("git", ["init", repo]);
+  for (const provider of ["codex", "claude"]) {
+    const request = { config: { provider, cwd: repo } };
+    assert.equal(
+      await configureCodexAgent({
+        request,
+        signal: new AbortController().signal,
+        readWritableRoots: async () => assert.fail("Should not read Codex config"),
+      }),
+      request,
+    );
+  }
+});
+
+test("Codex hook propagates config failures instead of replacing existing roots", async (t) => {
+  const { repo } = await repository(t);
+  await assert.rejects(
+    configureCodexAgent({
+      request: { config: { provider: "codex", cwd: repo } },
+      signal: new AbortController().signal,
+      readWritableRoots: async () => {
+        throw new Error("config unavailable");
+      },
+    }),
+    /config unavailable/,
+  );
+});
+
+test("real Codex config/read preserves project cache roots without editing config", async (t) => {
+  try {
+    await execFileAsync("codex", ["--version"]);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      t.skip("Codex is not installed");
+      return;
+    }
+    throw error;
+  }
+  const { directory, repo } = await repository(t);
+  const codexHome = join(directory, "codex-home");
+  const cache = join(directory, "pnpm-cache");
+  await mkdir(codexHome);
+  await mkdir(cache);
+  await mkdir(join(repo, ".codex"));
+  await writeFile(
+    join(codexHome, "config.toml"),
+    `[projects.${JSON.stringify(repo)}]\ntrust_level = "trusted"\n`,
+  );
+  const configPath = join(repo, ".codex", "config.toml");
+  const configText = `[sandbox_workspace_write]\nnetwork_access = true\nwritable_roots = [${JSON.stringify(cache)}]\n`;
+  await writeFile(configPath, configText);
+  const request = { config: { provider: "codex", cwd: repo }, env: { CODEX_HOME: codexHome } };
+  const result = await configureCodexAgent({ request, signal: new AbortController().signal });
+  assert.deepEqual(result.config.providerOptions, {
+    sandbox_workspace_write: { writable_roots: [cache, join(repo, ".jj"), join(repo, ".git")] },
+  });
+  assert.equal(await readFile(configPath, "utf8"), configText);
+  assert.deepEqual(
+    await readCodexWritableRoots({
+      cwd: repo,
+      signal: new AbortController().signal,
+      env: { ...process.env, CODEX_HOME: codexHome },
+    }),
+    [cache],
+  );
+});
 
 test("creates a registered jj workspace from the source parents and preserves the request", async (t) => {
   const { repo, workspacesRoot } = await repository(t);

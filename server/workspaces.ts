@@ -11,6 +11,7 @@ import type {
 } from "@getpaseo/plugin/server";
 import { createNameId } from "./names.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
+import { readCodexWritableRoots } from "./codex-config.js";
 
 const execFileAsync = promisify(execFile);
 const ownershipSchema = z
@@ -104,6 +105,69 @@ async function jj(cwd: string, signal: AbortSignal, ...args: string[]): Promise<
     maxBuffer: 1024 * 1024,
   });
   return stdout.trim();
+}
+
+export async function configureCodexAgent({
+  request,
+  signal,
+  readWritableRoots = readCodexWritableRoots,
+}: {
+  request: PluginBeforeRequests["agent.create"];
+  signal: AbortSignal;
+  readWritableRoots?: typeof readCodexWritableRoots;
+}): Promise<PluginBeforeRequests["agent.create"]> {
+  signal.throwIfAborted();
+  if (request.config.provider !== "codex") return request;
+  const cwd = await realpath(expandHome(request.config.cwd));
+  const root = await findJjRoot(cwd);
+  if (!root) return request;
+
+  const repoPath = join(root, ".jj", "repo");
+  const repo = (await stat(repoPath)).isDirectory()
+    ? await realpath(repoPath)
+    : await realpath(resolve(root, ".jj", (await readFile(repoPath, "utf8")).trim()));
+  const roots = [dirname(repo)];
+  if (await optionalRealpath(join(root, ".git"))) {
+    const { stdout } = await execFileAsync(
+      "git",
+      [
+        "--no-optional-locks",
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+        "--git-dir",
+      ],
+      { cwd: root, signal, timeout: 25_000, maxBuffer: 1024 * 1024 },
+    );
+    for (const path of stdout.trim().split("\n")) roots.push(await realpath(path));
+  }
+
+  const options = request.config.providerOptions;
+  const workspaceWrite = z
+    .object({ writable_roots: z.array(z.string()).optional() })
+    .passthrough()
+    .optional()
+    .parse(options?.sandbox_workspace_write);
+  const configured = await readWritableRoots({
+    cwd,
+    signal,
+    env: { ...process.env, ...request.env },
+  });
+  return {
+    ...request,
+    config: {
+      ...request.config,
+      providerOptions: {
+        ...options,
+        sandbox_workspace_write: {
+          ...workspaceWrite,
+          writable_roots: [
+            ...new Set([...configured, ...(workspaceWrite?.writable_roots ?? []), ...roots]),
+          ],
+        },
+      },
+    },
+  };
 }
 
 async function resolveBaseRevision(

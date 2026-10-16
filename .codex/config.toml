@@ -1,8 +1,3 @@
 [sandbox_workspace_write]
 network_access = true # Opt in to outbound network
-writable_roots = [
-  "~/.npm",
-  "~/.local/share/pnpm",
-  "~/.cache/pnpm",
-  "../../../paseo-jj-workspace-plugin/.jj",
-]
+writable_roots = ["~/.npm", "~/.local/share/pnpm", "~/.cache/pnpm"]

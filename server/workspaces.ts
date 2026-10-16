@@ -342,6 +342,8 @@ export async function createWorkspace({
 
   return {
     ...request,
+    // An explicit title keeps Paseo's task auto-naming from replacing the jj name.
+    title: name,
     source: {
       kind: "directory",
       path: join(directory, relative(jjRoot, cwd)),

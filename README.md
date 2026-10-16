@@ -10,10 +10,12 @@ resulting directory. Each workspace lives at:
 ~/projects/paseo-workspaces/<projectname>-<adjective>-<animal>
 ```
 
-For example, `myproject-quiet-otter`. The jj workspace name is just `quiet-otter`; the project
-prefix is kept only in the directory name. Names are generated independently of Paseo's workspace
-ID, with retries on collisions. The source Paseo project membership and any working subdirectory are
-preserved. Existing workspaces keep their names and can still be archived normally.
+For example, `myproject-quiet-otter`. The jj workspace name and Paseo sidebar title are both
+`quiet-otter`; the project prefix is kept only in the directory name. The plugin sets an explicit
+title in place of any requested task title, so Paseo's task auto-naming keeps the short jj name.
+Names are generated independently of Paseo's workspace ID, with retries on collisions. The source
+Paseo project membership and any working subdirectory are preserved. Existing workspaces keep their
+names and can still be archived normally.
 
 Local creation and requests without a base share the source workspace's parent revision(s), just
 like plain `jj workspace add`. They do not include changes from the source working copy.

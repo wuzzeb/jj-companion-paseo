@@ -214,7 +214,7 @@ test("real Codex config/read preserves project cache roots without editing confi
   );
 });
 
-test("creates a registered jj workspace from the source parents and preserves the request", async (t) => {
+test("creates a registered jj workspace from the source parents and uses its name as the title", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
   const request: PluginBeforeRequests["workspace.create"] = {
     source: { kind: "directory", path: repo, projectId: "project" },
@@ -232,7 +232,8 @@ test("creates a registered jj workspace from the source parents and preserves th
   assert.match(name, /^[a-z]+-[a-z]+$/);
   assert.equal(destination, join(workspacesRoot, `My-app-${name}`));
   assert.equal(result.source.projectId, "project");
-  assert.deepEqual({ ...result, source: request.source }, request);
+  assert.deepEqual({ ...result, source: request.source }, { ...request, title: name });
+  assert.equal(request.title, "A task");
   assert.equal(await jj(destination, "root"), destination);
   assert.deepEqual(
     (await jj(repo, "workspace", "list", "-T", 'name ++ "\\n"')).split("\n").sort(),
@@ -289,6 +290,7 @@ test("converts project-only Worktree requests and uses unique names for concurre
     assert.equal(result.source.kind, "directory");
     if (result.source.kind !== "directory") throw new Error("Expected directory source");
     assert.equal(result.source.projectId, "project");
+    assert.equal(result.title, basename(result.source.path).slice("My-app-".length));
     return result.source.path;
   });
   assert.notEqual(paths[0], paths[1]);

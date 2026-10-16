@@ -1,0 +1,25 @@
+{
+  "name": "paseo-jj",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test server/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint index.server.ts server",
+    "format": "oxfmt index.server.ts server package.json tsconfig.json paseo-plugin.json pnpm-workspace.yaml README.md .gitignore",
+    "format:check": "oxfmt --check index.server.ts server package.json tsconfig.json paseo-plugin.json pnpm-workspace.yaml README.md .gitignore"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.11.2",
+    "@getpaseo/plugin": "0.11.2",
+    "@getpaseo/protocol": "0.11.2",
+    "@types/node": "^22.15.32",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "packageManager": "pnpm@12.13.0"
+}

@@ -11,9 +11,9 @@
     "format:check": "oxfmt --check index.server.ts server package.json tsconfig.json paseo-plugin.json pnpm-workspace.yaml README.md .gitignore"
   },
   "devDependencies": {
-    "@getpaseo/client": "0.11.2",
-    "@getpaseo/plugin": "0.11.2",
-    "@getpaseo/protocol": "0.11.2",
+    "@getpaseo/client": "0.12.0",
+    "@getpaseo/plugin": "0.12.0",
+    "@getpaseo/protocol": "0.12.0",
     "@types/node": "^22.15.32",
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",

@@ -221,6 +221,8 @@ test("creates a registered jj workspace from the source parents and uses its nam
     title: "A task",
     workspaceId: "wks_0123456789abcdef",
     idempotencyKey: "create-task",
+    background: true,
+    callerAgentId: "caller-agent",
     firstAgentContext: { prompt: "Do a task" },
   };
   const result = await createWorkspace({ request, ...options(repo, workspacesRoot) });

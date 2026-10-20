@@ -30,14 +30,16 @@ Selecting a base creates a new jj workspace on that commit, without creating a n
 jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
 arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
 
-Requires Paseo 0.11.2 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
+Requires Paseo 0.12.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
 Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
 worktree alongside the jj workspace. Non-colocated sources remain non-colocated. Paths refer to the
 machine running the Paseo daemon.
 
-Install the directory:
+Install dependencies from the plugin directory, then install it in Paseo. The protocol config parser
+is bundled from the local dependencies when Paseo compiles the plugin:
 
 ```bash
+pnpm install --frozen-lockfile
 paseo plugin install /absolute/path/to/paseo-jj-workspace-plugin
 ```
 
@@ -85,6 +87,10 @@ removes the workspace and its Git worktree registration, and deletes the directo
 are deleted too; jj does not preserve them in that snapshot. Ownership is recorded in
 `.jj/paseo-jj-workspace-plugin.json`, outside the tracked files. Unmarked workspaces and directories
 outside the managed root are retained.
+
+Paseo 0.12 background creation (`paseo workspace create --background`) uses the same jj workspace
+creation hook. Background status and caller context are preserved. Cleanup explicitly includes
+background workspaces, even when they are hidden from the sidebar.
 
 Archive events are best effort. A missed event or failed removal leaves the directory behind;
 failures appear in `paseo plugin logs jj-workspace`. There is no automatic retry after a missed

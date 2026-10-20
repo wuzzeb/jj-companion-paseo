@@ -167,14 +167,14 @@ importers:
   .:
     devDependencies:
       '@getpaseo/client':
-        specifier: 0.11.2
-        version: 0.11.2
+        specifier: 0.12.0
+        version: 0.12.0
       '@getpaseo/plugin':
-        specifier: 0.11.2
-        version: 0.11.2(@getpaseo/client@0.11.2)(@getpaseo/protocol@0.11.2)(zod@4.6.7)
+        specifier: 0.12.0
+        version: 0.12.0(@getpaseo/client@0.12.0)(@getpaseo/protocol@0.12.0)(zod@4.6.7)
       '@getpaseo/protocol':
-        specifier: 0.11.2
-        version: 0.11.2
+        specifier: 0.12.0
+        version: 0.12.0
       '@types/node':
         specifier: ^22.15.32
         version: 22.20.5
@@ -357,14 +357,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@getpaseo/client@0.11.2':
-    resolution: {integrity: sha512-F5483GAkhbitCoJi3Xy+RbIS9ja6Hy+NToOl8J3b5bIFhrttO4sofETCW2Q2LVFDTyQq0v24z8ZQpvwuyV/IUg==}
+  '@getpaseo/client@0.12.0':
+    resolution: {integrity: sha512-FrszuQkG73mbU5nJcaWKjW2K1mDt6k1veCa2acV9V8HphPD7BtQLPiiUnXsSUdYeP8S54duGbuYfZgaVyUvd5g==}
 
-  '@getpaseo/plugin@0.11.2':
-    resolution: {integrity: sha512-AgTdbjCHdwzIJwL+vRz9j4lgcgemg8BszOwWEngLQ+L2ZRIgSaVVIrNXgKDoH2eC/QicUHTC1DysLqSYLpyy0A==}
+  '@getpaseo/plugin@0.12.0':
+    resolution: {integrity: sha512-LSwpGU3o6/SRAfzIIq9BA6aqEO6LRmbJTyyCRl+jWCsguL++klMpf6HBbAZJtQOlv5YuF21gjKZvLcSkngpxFg==}
     peerDependencies:
-      '@getpaseo/client': 0.11.2
-      '@getpaseo/protocol': 0.11.2
+      '@getpaseo/client': 0.12.0
+      '@getpaseo/protocol': 0.12.0
       react: ~19.1.0
       react-native: '>=0.81.5'
       zod: ^4.4.3
@@ -372,11 +372,11 @@ packages:
       react-native:
         optional: true
 
-  '@getpaseo/protocol@0.11.2':
-    resolution: {integrity: sha512-C+YZ5aZs+X3ygKJnpL1IZ9MvMcmGz7waPV0UYusaTFg+bPSl2jW2HOEYlxUALucwTnDYwsFgi+rAzKAihHWkXQ==}
+  '@getpaseo/protocol@0.12.0':
+    resolution: {integrity: sha512-05jivVDeG18jWTpvQZ3yETNxH/AfHpHy9CgnP7O5ZxQLUr3onJIAqaGNzv15dPnGf4fU342UHQBFAE2t2Yc7fQ==}
 
-  '@getpaseo/relay@0.11.2':
-    resolution: {integrity: sha512-eJ6/apJDWGyxdMbCH59DKhY4GcvbqQCFdeKQG3Rmy4jBvAeEuqC0XeuJd5lD5o2PcCeguzH37qeKFasODOpRSw==}
+  '@getpaseo/relay@0.12.0':
+    resolution: {integrity: sha512-ochmc4uIZWlSgMr9aJIEqnyiFrhcW+TjOWxnTYX4LCyiJMvLrhN4DJpZlReAqyWmSgEybjjRBq+7NBH64FIV3A==}
 
   '@oxfmt/binding-android-arm-eabi@0.46.0':
     resolution: {integrity: sha512-b1doV4WRcJU+BESSlCvCjV+5CEr/T6h0frArAdV26Nir+gGNFNaylvDiiMPfF1pxeV0txZEs38ojzJaxBYg+ng==}
@@ -785,29 +785,29 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@getpaseo/client@0.11.2':
+  '@getpaseo/client@0.12.0':
     dependencies:
-      '@getpaseo/protocol': 0.11.2
-      '@getpaseo/relay': 0.11.2
+      '@getpaseo/protocol': 0.12.0
+      '@getpaseo/relay': 0.12.0
       zod: 4.6.7
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@getpaseo/plugin@0.11.2(@getpaseo/client@0.11.2)(@getpaseo/protocol@0.11.2)(zod@4.6.7)':
+  '@getpaseo/plugin@0.12.0(@getpaseo/client@0.12.0)(@getpaseo/protocol@0.12.0)(zod@4.6.7)':
     dependencies:
       '@agentclientprotocol/sdk': 1.8.0(zod@4.6.7)
-      '@getpaseo/client': 0.11.2
-      '@getpaseo/protocol': 0.11.2
+      '@getpaseo/client': 0.12.0
+      '@getpaseo/protocol': 0.12.0
       use-sync-external-store: 1.7.0
       zod: 4.6.7
 
-  '@getpaseo/protocol@0.11.2':
+  '@getpaseo/protocol@0.12.0':
     dependencies:
       semver: 7.8.5
       zod: 4.6.7
 
-  '@getpaseo/relay@0.11.2':
+  '@getpaseo/relay@0.12.0':
     dependencies:
       base64-js: 1.5.1
       tweetnacl: 1.0.3

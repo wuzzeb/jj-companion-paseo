@@ -29,11 +29,7 @@ type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
 type WorkspacePage = Pick<WorkspaceListResult, "pageInfo"> & {
   entries: Pick<WorkspaceListResult["entries"][number], "workspaceDirectory">[];
 };
-// Paseo 0.11.2 lists all active workspaces and has no background feature. Newer
-// daemons need this option; their host-provided SDK forwards it to the daemon.
-type WorkspaceListOptions = NonNullable<Parameters<ListWorkspaces>[0]> & {
-  includeBackground: true;
-};
+type WorkspaceListOptions = NonNullable<Parameters<ListWorkspaces>[0]>;
 
 interface CreateWorkspaceOptions {
   request: WorkspaceRequest;

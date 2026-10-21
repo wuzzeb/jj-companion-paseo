@@ -1,3 +1,9 @@
 [sandbox_workspace_write]
 network_access = true # Opt in to outbound network
-writable_roots = ["~/.npm", "~/.local/share/pnpm", "~/.cache/pnpm"]
+writable_roots = [
+  "~/.npm",
+  "~/.local/share/pnpm",
+  "~/.cache/pnpm",
+  "/run/user/1000/pnpm-store-operation-locks-1000",
+  "/run/user/1000/pnpm-dir-locks-1000",
+]

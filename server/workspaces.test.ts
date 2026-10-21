@@ -223,10 +223,52 @@ test("real Codex config/read preserves project cache roots without editing confi
   );
 });
 
-test("creates a registered jj workspace from the source parents and uses its name as the title", async (t) => {
+for (const colocated of [true, false]) {
+  test(`Local preserves the selected jj working copy without setup (${colocated ? "colocated" : "non-colocated"})`, async (t) => {
+    const { directory, repo, workspacesRoot } = await repository(t, colocated);
+    const alias = join(directory, "local-alias");
+    await symlink(repo, alias);
+    await writeFile(join(repo, "paseo.json"), JSON.stringify({ worktree: { setup: "exit 7" } }));
+    const operation = await jj(repo, "op", "log", "--limit", "1", "--no-graph", "-T", "id");
+    for (const path of [repo, join(alias, "package")]) {
+      const request: PluginBeforeRequests["workspace.create"] = {
+        source: { kind: "directory", path, projectId: "project" },
+        title: "Local task",
+        workspaceId: "wks_local",
+        idempotencyKey: "local-task",
+        background: true,
+        callerAgentId: "caller-agent",
+        firstAgentContext: { prompt: "Use the existing checkout" },
+      };
+      const original = structuredClone(request);
+      const result = await createWorkspace({
+        request,
+        ...options(repo, workspacesRoot),
+        listProjects: async () => assert.fail("Local should not query projects"),
+        generateName: () => assert.fail("Local should not allocate a name"),
+        writeMarker: async () => assert.fail("Local should not claim ownership"),
+      });
+      assert.equal(result, request);
+      assert.deepEqual(request, original);
+    }
+    assert.equal(await jj(repo, "op", "log", "--limit", "1", "--no-graph", "-T", "id"), operation);
+    assert.equal(await readFile(join(repo, "base.txt"), "utf8"), "uncommitted\n");
+    assert.equal(await readFile(join(repo, "source-only.txt"), "utf8"), "source only\n");
+    assert.equal(
+      await jj(repo, "workspace", "list", "--ignore-working-copy", "-T", 'name ++ "\\n"'),
+      "default",
+    );
+    await assert.rejects(readdir(workspacesRoot), { code: "ENOENT" });
+    await assert.rejects(readFile(join(repo, ".jj", "paseo-jj-companion.json")), {
+      code: "ENOENT",
+    });
+  });
+}
+
+test("New worktree creates a registered jj workspace from the source parents and uses its name as the title", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
   const request: PluginBeforeRequests["workspace.create"] = {
-    source: { kind: "directory", path: repo, projectId: "project" },
+    source: { kind: "worktree", cwd: repo, projectId: "project" },
     title: "A task",
     workspaceId: "wks_0123456789abcdef",
     idempotencyKey: "create-task",
@@ -278,7 +320,7 @@ test("preserves a subdirectory selected through a symlink in a non-colocated rep
   const link = join(directory, "repo-link");
   await symlink(repo, link);
   const result = await createWorkspace({
-    request: { source: { kind: "directory", path: join(link, "package"), projectId: "project" } },
+    request: { source: { kind: "worktree", cwd: join(link, "package"), projectId: "project" } },
     ...options(repo, workspacesRoot),
   });
   assert.equal(result.source.kind, "directory");
@@ -346,7 +388,7 @@ test("surfaces jj failures instead of falling back to the source directory", asy
   await mkdir(join(repo, ".jj"));
   await assert.rejects(
     createWorkspace({
-      request: { source: { kind: "directory", path: repo } },
+      request: { source: { kind: "worktree", cwd: repo } },
       ...options(repo, workspacesRoot),
     }),
     /Command failed/,
@@ -358,7 +400,7 @@ test("honors an already canceled hook without creating a workspace", async (t) =
   const { repo, workspacesRoot } = await repository(t);
   await assert.rejects(
     createWorkspace({
-      request: { source: { kind: "directory", path: repo } },
+      request: { source: { kind: "worktree", cwd: repo } },
       ...options(repo, workspacesRoot),
       signal: AbortSignal.abort(),
     }),
@@ -388,7 +430,7 @@ function archiveOptions(cwd: string, workspacesRoot: string) {
 async function managedWorkspace(t: TestContext, colocated = true) {
   const paths = await repository(t, colocated);
   const result = await createWorkspace({
-    request: { source: { kind: "directory", path: paths.repo, projectId: "project" } },
+    request: { source: { kind: "worktree", cwd: paths.repo, projectId: "project" } },
     ...options(paths.repo, paths.workspacesRoot),
   });
   if (result.source.kind !== "directory") throw new Error("Expected directory source");
@@ -435,7 +477,7 @@ for (const colocated of [true, false]) {
     );
     await jj(repo, "new", "-m", "lifecycle config is in the parent");
     const result = await createWorkspace({
-      request: { source: { kind: "directory", path: join(repo, "package") } },
+      request: { source: { kind: "worktree", cwd: join(repo, "package") } },
       ...options(repo, workspacesRoot),
       generateName: () => "quiet-jay",
     });
@@ -475,7 +517,7 @@ test("stops failed setup commands and preserves the owned workspace for recovery
   await jj(repo, "new", "-m", "lifecycle config is in the parent");
   await assert.rejects(
     createWorkspace({
-      request: { source: { kind: "directory", path: repo } },
+      request: { source: { kind: "worktree", cwd: repo } },
       ...options(repo, workspacesRoot),
       generateName: () => "failed-jay",
     }),
@@ -596,7 +638,7 @@ test("retries name collisions without modifying existing directories or workspac
   await jj(repo, "workspace", "add", "--name", "calm-fox", join(directory, "elsewhere"));
   const names = ["quiet-otter", "calm-fox", "bright-owl"];
   const result = await createWorkspace({
-    request: { source: { kind: "directory", path: repo, projectId: "project" } },
+    request: { source: { kind: "worktree", cwd: repo, projectId: "project" } },
     ...options(repo, workspacesRoot),
     generateName: () => {
       const name = names.shift();
@@ -845,7 +887,7 @@ test("rolls back a new jj workspace if writing its ownership marker fails", asyn
   const { repo, workspacesRoot } = await repository(t);
   await assert.rejects(
     createWorkspace({
-      request: { source: { kind: "directory", path: repo, projectId: "project" } },
+      request: { source: { kind: "worktree", cwd: repo, projectId: "project" } },
       ...options(repo, workspacesRoot),
       writeMarker: async () => {
         throw new Error("Disk full while writing ownership marker");
@@ -866,7 +908,7 @@ test("rolls back a new workspace if creation is canceled after jj workspace add 
   const controller = new AbortController();
   await assert.rejects(
     createWorkspace({
-      request: { source: { kind: "directory", path: repo, projectId: "project" } },
+      request: { source: { kind: "worktree", cwd: repo, projectId: "project" } },
       ...options(repo, workspacesRoot),
       signal: controller.signal,
       writeMarker: async (...args) => {

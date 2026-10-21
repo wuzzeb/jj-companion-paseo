@@ -2,8 +2,9 @@
 
 jj Companion brings Jujutsu workspaces, commit history, and bookmark management to Paseo.
 
-It creates a jj workspace for every explicit Paseo workspace creation inside a jj repository,
-including Local isolation. Git-only repositories and ordinary directories keep Paseo's behavior.
+It follows Paseo's isolation picker: **Local** uses the selected directory without creating a jj
+workspace; **New worktree** creates a jj workspace inside a jj repository, based on the selected Git
+branch. Git-only repositories and ordinary directories keep Paseo's behavior.
 
 The plugin uses `server.before("workspace.create")` to run `jj workspace add`, then gives Paseo the
 resulting directory. Each workspace lives at:
@@ -19,8 +20,10 @@ Names are generated independently of Paseo's workspace ID, with retries on colli
 Paseo project membership and any working subdirectory are preserved. Existing workspaces keep their
 names and can still be archived normally.
 
-Local creation and requests without a base share the source workspace's parent revision(s), just
-like plain `jj workspace add`. They do not include changes from the source working copy.
+New worktree requests without a base share the source workspace's parent revision(s), just like
+plain `jj workspace add`. They do not include changes from the source working copy. Local uses the
+existing working copy, including its uncommitted changes, and does not run the plugin's setup
+commands.
 
 In Paseo's Worktree mode, the base picker lists Git branches for colocated projects. The plugin
 resolves the selected `refName` (or CLI `baseBranch`) to a commit in the backing Git store and
@@ -143,9 +146,9 @@ are deleted too; jj does not preserve them in that snapshot. Ownership is record
 `.jj/paseo-jj-workspace-plugin.json`, are still recognized. Unmarked workspaces and directories
 outside the managed root are retained.
 
-Paseo 0.12 background creation (`paseo workspace create --background`) uses the same jj workspace
-creation hook. Background status and caller context are preserved. Cleanup explicitly includes
-background workspaces, even when they are hidden from the sidebar.
+Paseo 0.12 background creation uses the same isolation behavior: directory sources stay Local, and
+worktree sources create jj workspaces. Background status and caller context are preserved. Cleanup
+explicitly includes background workspaces, even when they are hidden from the sidebar.
 
 Archive events are best effort. A missed event or failed removal leaves the directory behind;
 failures appear in `paseo plugin logs jj-companion`. There is no automatic retry after a missed

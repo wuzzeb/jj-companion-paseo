@@ -220,7 +220,10 @@ export async function createWorkspace({
 }: CreateWorkspaceOptions): Promise<WorkspaceRequest> {
   signal.throwIfAborted();
   const source = request.source;
-  let sourcePath = source.kind === "directory" ? source.path : source.cwd;
+  // Paseo's Local choice uses the selected directory as-is; only New worktree
+  // requests should allocate a jj workspace.
+  if (source.kind !== "worktree") return request;
+  let sourcePath = source.cwd;
   async function getProject() {
     if (!source.projectId) return undefined;
     const { projects } = await listProjects();
@@ -239,22 +242,22 @@ export async function createWorkspace({
   project ??= await getProject();
 
   if (
-    source.kind === "worktree" &&
-    (source.action === "checkout" || source.checkoutSource || source.githubPrNumber !== undefined)
+    source.action === "checkout" ||
+    source.checkoutSource ||
+    source.githubPrNumber !== undefined
   ) {
     throw new Error(
       "paseo-jj-companion cannot check out Git branches or pull requests; create a new workspace instead.",
     );
   }
 
-  if (source.kind === "worktree" && source.branchName) {
+  if (source.branchName) {
     console.info(
       "paseo-jj-companion creates a jj workspace without creating a new Git branch or jj bookmark.",
     );
   }
 
-  const base =
-    source.kind === "worktree" ? source.refName?.trim() || source.baseBranch?.trim() : undefined;
+  const base = source.refName?.trim() || source.baseBranch?.trim();
   const revision = base ? await resolveBaseRevision(jjRoot, signal, base) : undefined;
 
   const projectName =

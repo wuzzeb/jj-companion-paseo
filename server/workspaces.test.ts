@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { after, test, type TestContext } from "node:test";
@@ -15,7 +24,7 @@ const execFileAsync = promisify(execFile);
 type PaseoWorkspaceListOptions = NonNullable<
   Parameters<PluginHookContext["paseo"]["workspaces"]["list"]>[0]
 >;
-const configDirectory = await mkdtemp(join(tmpdir(), "paseo-jj-workspace-config-"));
+const configDirectory = await mkdtemp(join(tmpdir(), "paseo-jj-companion-config-"));
 const configPath = join(configDirectory, "config.toml");
 await writeFile(configPath, '[user]\nname = "Test"\nemail = "test@example.invalid"\n');
 const previousConfig = process.env.JJ_CONFIG;
@@ -32,7 +41,7 @@ async function jj(cwd: string, ...args: string[]) {
 }
 
 async function fixture(t: TestContext) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-workspace-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-companion-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repo = join(directory, "My app");
   const workspacesRoot = join(directory, "workspaces");
@@ -242,7 +251,7 @@ test("creates a registered jj workspace from the source parents and uses its nam
     ["default", name].sort(),
   );
   assert.deepEqual(
-    JSON.parse(await readFile(join(destination, ".jj", "paseo-jj-workspace-plugin.json"), "utf8")),
+    JSON.parse(await readFile(join(destination, ".jj", "paseo-jj-companion.json"), "utf8")),
     {
       version: 1,
       name,
@@ -476,7 +485,7 @@ test("stops failed setup commands and preserves the owned workspace for recovery
   assert.equal(await readFile(join(destination, "started"), "utf8"), "");
   await assert.rejects(readFile(join(destination, "should-not-run")), { code: "ENOENT" });
   assert.equal(await jj(destination, "workspace", "root", "--name", "failed-jay"), destination);
-  await readFile(join(destination, ".jj", "paseo-jj-workspace-plugin.json"));
+  await readFile(join(destination, ".jj", "paseo-jj-companion.json"));
 });
 
 test("teardown failure preserves the workspace and can be retried", async (t) => {
@@ -499,6 +508,7 @@ test("teardown failure preserves the workspace and can be retried", async (t) =>
 test("runs teardown for older ownership markers without a recorded source directory", async (t) => {
   const { repo, destination, workspacesRoot } = await managedWorkspace(t, false);
   const marker = join(destination, ".jj", "paseo-jj-workspace-plugin.json");
+  await rename(join(destination, ".jj", "paseo-jj-companion.json"), marker);
   const ownership = JSON.parse(await readFile(marker, "utf8"));
   delete ownership.sourceDirectory;
   await writeFile(marker, JSON.stringify(ownership));
@@ -606,7 +616,7 @@ test("retries name collisions without modifying existing directories or workspac
   );
 });
 
-test("archives existing workspaces whose jj name includes the project prefix", async (t) => {
+test("archives legacy workspaces whose jj name includes the project prefix", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
   const name = "My-app-quiet-otter";
   const destination = join(workspacesRoot, name);
@@ -627,7 +637,7 @@ test("refuses cleanup when a short name is registered to another directory", asy
   const elsewhere = join(directory, "elsewhere");
   await jj(repo, "workspace", "add", "--name", name, elsewhere);
   await writeFile(
-    join(destination, ".jj", "paseo-jj-workspace-plugin.json"),
+    join(destination, ".jj", "paseo-jj-companion.json"),
     JSON.stringify({ version: 1, name, directory: destination }),
   );
   await assert.rejects(
@@ -710,10 +720,14 @@ test("does not remove unmarked jj workspaces or directories outside the managed 
   assert.equal(await readFile(join(destination, "base.txt"), "utf8"), "committed\n");
 });
 
-test("rejects mismatched ownership markers and leaves the workspace intact", async (t) => {
+test("rejects mismatched ownership even when a valid legacy marker exists", async (t) => {
   const { destination, workspacesRoot } = await managedWorkspace(t);
   await writeFile(
     join(destination, ".jj", "paseo-jj-workspace-plugin.json"),
+    await readFile(join(destination, ".jj", "paseo-jj-companion.json")),
+  );
+  await writeFile(
+    join(destination, ".jj", "paseo-jj-companion.json"),
     JSON.stringify({
       version: 1,
       name: "default",

@@ -23,7 +23,9 @@ const ownershipSchema = z
     sourceDirectory: z.string().min(1).optional(),
   })
   .strict();
-const markerName = "paseo-jj-workspace-plugin.json";
+const markerName = "paseo-jj-companion.json";
+// Workspaces created before the rename remain owned by this plugin.
+const legacyMarkerName = "paseo-jj-workspace-plugin.json";
 type WorkspaceRequest = PluginBeforeRequests["workspace.create"];
 type ListWorkspaces = PluginHookContext["paseo"]["workspaces"]["list"];
 type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
@@ -241,13 +243,13 @@ export async function createWorkspace({
     (source.action === "checkout" || source.checkoutSource || source.githubPrNumber !== undefined)
   ) {
     throw new Error(
-      "paseo-jj-workspace cannot check out Git branches or pull requests; create a new workspace instead.",
+      "paseo-jj-companion cannot check out Git branches or pull requests; create a new workspace instead.",
     );
   }
 
   if (source.kind === "worktree" && source.branchName) {
     console.info(
-      "paseo-jj-workspace creates a jj workspace without creating a new Git branch or jj bookmark.",
+      "paseo-jj-companion creates a jj workspace without creating a new Git branch or jj bookmark.",
     );
   }
 
@@ -289,7 +291,7 @@ export async function createWorkspace({
     // Remove only our empty reservation. Leave partially created workspaces for inspection.
     await rmdir(directory).catch((cleanupError: unknown) => {
       if (!hasCode(cleanupError, "ENOENT") && !hasCode(cleanupError, "ENOTEMPTY")) {
-        console.error(`paseo-jj-workspace could not release ${directory}`, cleanupError);
+        console.error(`paseo-jj-companion could not release ${directory}`, cleanupError);
       }
     });
     throw error;
@@ -308,7 +310,7 @@ export async function createWorkspace({
       await jj(directory, AbortSignal.timeout(4_000), "workspace", "remove", name);
     } catch (cleanupError) {
       console.error(
-        `paseo-jj-workspace failed to roll back ${directory}; remove jj workspace ${name} manually.`,
+        `paseo-jj-companion failed to roll back ${directory}; remove jj workspace ${name} manually.`,
         cleanupError,
       );
     }
@@ -321,7 +323,7 @@ export async function createWorkspace({
     sourceDirectory: jjRoot,
     signal,
   });
-  console.info(`paseo-jj-workspace created ${directory}`);
+  console.info(`paseo-jj-companion created ${directory}`);
 
   return {
     ...request,
@@ -355,13 +357,16 @@ async function archiveWorkspaceDirectory({
   const root = await optionalRealpath(workspacesRoot);
   if (!root || dirname(directory) !== root) return;
 
-  let contents: string;
-  try {
-    contents = await readFile(join(directory, ".jj", markerName), "utf8");
-  } catch (error) {
-    if (hasCode(error, "ENOENT")) return;
-    throw error;
+  let contents: string | undefined;
+  for (const name of [markerName, legacyMarkerName]) {
+    try {
+      contents = await readFile(join(directory, ".jj", name), "utf8");
+      break;
+    } catch (error) {
+      if (!hasCode(error, "ENOENT")) throw error;
+    }
   }
+  if (contents === undefined) return;
   const ownership = ownershipSchema.parse(JSON.parse(contents));
   // Existing markers use the full directory name; new ones use the short jj name.
   // The registered workspace root is also checked below before removing anything.
@@ -371,7 +376,7 @@ async function archiveWorkspaceDirectory({
     (ownership.name !== directoryName && !directoryName.endsWith(`-${ownership.name}`))
   ) {
     throw new Error(
-      `paseo-jj-workspace ownership does not match ${directory}; leaving it untouched.`,
+      `paseo-jj-companion ownership does not match ${directory}; leaving it untouched.`,
     );
   }
 
@@ -412,7 +417,7 @@ async function archiveWorkspaceDirectory({
     signal,
   });
   await jj(directory, signal, "workspace", "remove", ownership.name);
-  console.info(`paseo-jj-workspace removed ${directory}`);
+  console.info(`paseo-jj-companion removed ${directory}`);
 }
 
 // Archive events can overlap, including several records sharing one directory.

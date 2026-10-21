@@ -49,7 +49,7 @@ export async function runWorktreeLifecycle(options: {
   delete env.BASH_ENV;
   for (const command of commands) {
     signal.throwIfAborted();
-    console.info(`paseo-jj-workspace worktree.${phase} in ${directory}: ${command}`);
+    console.info(`paseo-jj-companion worktree.${phase} in ${directory}: ${command}`);
     const commandSignal = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
     const windows = process.platform === "win32";
     const child = spawn(

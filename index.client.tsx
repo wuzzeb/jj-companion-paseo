@@ -4,7 +4,7 @@ import { HistoryPanel } from "./client/history-panel.js";
 export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
     id: "history",
-    title: "jj",
+    title: "jj Companion",
     icon: "GitGraph",
     context: "workspace",
     locations: ["explorer", "workspace"],

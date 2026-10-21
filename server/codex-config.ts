@@ -60,7 +60,7 @@ export async function readCodexWritableRoots({ cwd, signal, env }: ReadRootsOpti
         id: 1,
         method: "initialize",
         params: {
-          clientInfo: { name: "paseo-jj-workspace", version: "0.1.0" },
+          clientInfo: { name: "paseo-jj-companion", version: "0.1.0" },
           capabilities: { experimentalApi: true },
         },
       });

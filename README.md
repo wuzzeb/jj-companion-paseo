@@ -1,7 +1,9 @@
-# paseo-jj-workspace-plugin
+# jj Companion
 
-Creates a jj workspace for every explicit Paseo workspace creation inside a jj repository, including
-Local isolation. Git-only repositories and ordinary directories keep Paseo's behavior.
+jj Companion brings Jujutsu workspaces, commit history, and bookmark management to Paseo.
+
+It creates a jj workspace for every explicit Paseo workspace creation inside a jj repository,
+including Local isolation. Git-only repositories and ordinary directories keep Paseo's behavior.
 
 The plugin uses `server.before("workspace.create")` to run `jj workspace add`, then gives Paseo the
 resulting directory. Each workspace lives at:
@@ -40,18 +42,19 @@ is bundled from the local dependencies when Paseo compiles the plugin:
 
 ```bash
 pnpm install --frozen-lockfile
-paseo plugin install /absolute/path/to/paseo-jj-workspace-plugin
+paseo plugin install /absolute/path/to/paseo-jj-companion
 ```
 
 Paseo must have plugins enabled (`pluginsEnabled: true` in its config). Reload after editing:
 
 ```bash
-paseo plugin reload jj-workspace
+paseo plugin reload jj-companion
 ```
 
-The plugin also provides a **jj** history tab in Paseo’s Explorer sidebar. Open it from the
-Explorer’s **+** menu, or search for **Open jj history** in the Command Center. It can also be moved
-into a regular workspace pane. On compact layouts, open a new workspace tab and choose **jj**.
+The plugin also provides a **jj Companion** history tab in Paseo’s Explorer sidebar. Open it from
+the Explorer’s **+** menu, or search for **Open jj history** in the Command Center. It can also be
+moved into a regular workspace pane. On compact layouts, open a new workspace tab and choose **jj
+Companion**.
 
 The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
 conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
@@ -115,7 +118,7 @@ Both fields accept a command string or an array of commands. The plugin reads `p
 jj workspace root and runs commands sequentially there, even when the selected directory is a
 subdirectory. Setup completes before the directory is handed to Paseo, so it can prepare local
 configuration before the first agent starts. Commands use non-interactive Bash on Unix and
-PowerShell on Windows. Output appears in `paseo plugin logs jj-workspace`.
+PowerShell on Windows. Output appears in `paseo plugin logs jj-companion`.
 
 Commands inherit the daemon environment, with these values set by the plugin:
 
@@ -136,7 +139,8 @@ Archiving runs `jj workspace remove` after checking that no other active Paseo w
 directory, including subdirectories and background workspaces. jj snapshots the working-copy state,
 removes the workspace and its Git worktree registration, and deletes the directory. Ignored files
 are deleted too; jj does not preserve them in that snapshot. Ownership is recorded in
-`.jj/paseo-jj-workspace-plugin.json`, outside the tracked files. Unmarked workspaces and directories
+`.jj/paseo-jj-companion.json`, outside the tracked files. Markers created before the rename,
+`.jj/paseo-jj-workspace-plugin.json`, are still recognized. Unmarked workspaces and directories
 outside the managed root are retained.
 
 Paseo 0.12 background creation (`paseo workspace create --background`) uses the same jj workspace
@@ -144,7 +148,7 @@ creation hook. Background status and caller context are preserved. Cleanup expli
 background workspaces, even when they are hidden from the sidebar.
 
 Archive events are best effort. A missed event or failed removal leaves the directory behind;
-failures appear in `paseo plugin logs jj-workspace`. There is no automatic retry after a missed
+failures appear in `paseo plugin logs jj-companion`. There is no automatic retry after a missed
 event. If ownership-marker creation fails, the plugin attempts to remove its new jj workspace
 immediately. A later Paseo failure can still leave an orphan: the before-hook has no callback for
 that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep.

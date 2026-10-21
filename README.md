@@ -49,6 +49,57 @@ Paseo must have plugins enabled (`pluginsEnabled: true` in its config). Reload a
 paseo plugin reload jj-workspace
 ```
 
+The plugin also provides a **jj** history tab in Paseo’s Explorer sidebar. Open it from the
+Explorer’s **+** menu, or search for **Open jj history** in the Command Center. It can also be moved
+into a regular workspace pane. On compact layouts, open a new workspace tab and choose **jj**.
+
+The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
+conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
+Selection follows a rewritten change when its change ID remains unambiguous. History starts with the
+latest 200 visible revisions across all branches; **Load older changes** expands it up to 1,000
+revisions. Connections to history outside the loaded rows end in faded stubs.
+
+History refreshes every 10 seconds while the app is active, and the refresh button reloads it
+immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata
+therefore reflects the latest jj snapshot, rather than unsnapshotted edits on disk. Git-only
+repositories and ordinary directories show an empty state. Diff viewing is a future addition.
+
+The history toolbar provides **Create bookmark**, **Tug**, **Push**, and **Fetch**. These shortcuts
+act on the workspace’s edited change (`@`), independently of the selected graph row. If `@` is empty
+and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at `@`. Actions
+snapshot pending files before resolving the tip, so unsnapshotted work is included.
+
+With no branch bookmark, **Create bookmark** suggests the workspace name. Press Enter or choose
+**Create bookmark** to create it locally, then use **Push** after reviewing it. **Tug** advances the
+nearest bookmarked ancestor to the workspace tip. Automatic discovery excludes immutable and trunk
+bookmarks, so it does not pull `main` forward into a feature branch. The branch row shows the branch
+bookmark with Tug and Push on the right. If several names qualify, select the branch bookmark once
+for both actions; neither action is enabled until a bookmark is selected. With no branch bookmark,
+the row offers creation instead. No `tug` alias is required.
+
+**Push** publishes the bookmark at its current position; use Tug first to include newer changes. A
+first push automatically tracks the new remote bookmark. If a same-named remote bookmark already
+exists and is untracked, Push tracks it first. If that imports a different local target or creates a
+conflict, the operation stops for review instead of pushing a different target. **Fetch** runs
+`jj git fetch`, updating remote and tracked bookmarks without running a rebase. A single remote is
+selected automatically; choose one explicitly when the repository has multiple remotes. Fetch,
+**Manage Bookmarks**, and the Git remote selector appear together below History, above the branch
+row.
+
+Click, right-click, or long-press a local bookmark chip to open a small Push menu for that exact
+bookmark. On desktop, drag a local bookmark chip onto another graph row to move it, including
+backwards and sideways. On mobile, the branch selector and toolbar Push provide the common workflow;
+tapping a local bookmark also opens its Push menu. Remote bookmark labels are read-only. **Manage
+Bookmarks** lists local and remote bookmarks and provides Create and Push actions. The bookmark-plus
+icon in change details creates a bookmark on that exact selected change. Rename, deletion, and
+tracking management can be done in a jj terminal.
+
+Bookmark operations are serialized across this plugin’s workspaces sharing the same jj repository.
+Stale bookmark positions and abandoned drop targets produce an error and refresh the view. Push and
+Fetch run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
+Closing the panel does not cancel a job; reloading or disabling the plugin cancels pending work.
+Normal jj push checks remain enabled, including description, conflict, and remote-update checks.
+
 Configure repository lifecycle commands in `paseo.json`:
 
 ```json

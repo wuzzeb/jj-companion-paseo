@@ -11,5 +11,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["index.server.ts", "server/**/*.ts"]
+  "include": ["index.server.ts", "server/**/*.ts", "shared/**/*.ts", "client/*.test.ts"]
 }

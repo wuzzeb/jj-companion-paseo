@@ -12,6 +12,7 @@ import type {
 import { createNameId } from "./names.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
 import { readCodexWritableRoots } from "./codex-config.js";
+import { findJjRoot } from "./repository.js";
 
 const execFileAsync = promisify(execFile);
 const ownershipSchema = z
@@ -76,20 +77,6 @@ async function resolveWorkspacePath(path: string): Promise<string> {
   const parent = dirname(absolute);
   if (parent === absolute) return absolute;
   return join(await resolveWorkspacePath(parent), basename(absolute));
-}
-
-async function findJjRoot(path: string): Promise<string | null> {
-  let current = path;
-  while (true) {
-    try {
-      if ((await stat(join(current, ".jj"))).isDirectory()) return current;
-    } catch (error) {
-      if (!hasCode(error, "ENOENT")) throw error;
-    }
-    const parent = dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
 }
 
 async function jj(cwd: string, signal: AbortSignal, ...args: string[]): Promise<string> {

@@ -1,9 +1,15 @@
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View, Platform, StyleSheet } from "react-native";
-import { useRpc, useWorkspace, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
-import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
-import { historyLimit, historyRpc, maxHistoryLimit, type Change } from "../shared/history.js";
+import { z } from "zod";
+import {
+  useRpc,
+  useTabState,
+  useWorkspace,
+  type PluginWorkspacePanelProps,
+} from "@getpaseo/plugin/client";
+import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
+import { historyLimit, historyRpc, maxHistoryLimit } from "../shared/history.js";
 import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
 import { useBookmarks } from "./use-bookmarks.js";
@@ -14,6 +20,15 @@ import type { BookmarkMenuTarget } from "./bookmark-menu.js";
 import type { Bookmark, BookmarkTarget } from "../shared/bookmarks.js";
 
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
+const historyTabStateSchema = z
+  .object({
+    limit: z.number().int().min(historyLimit).max(maxHistoryLimit),
+    selection: z
+      .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
+      .readonly()
+      .nullable(),
+  })
+  .readonly();
 
 export function HistoryPanel(props: PluginWorkspacePanelProps) {
   const directory = useWorkspace(props.workspaceId, (workspace) => workspace.directory);
@@ -32,11 +47,18 @@ function History({
   theme,
   host,
   workspaceId,
+  tab,
   directory,
   workspaceName,
-}: PluginWorkspacePanelProps & { directory: string | null; workspaceName: string }) {
-  const [limit, setLimit] = useState(historyLimit);
-  const [selection, setSelection] = useState<Change | null>(null);
+}: PluginWorkspacePanelProps & {
+  readonly directory: string | null;
+  readonly workspaceName: string;
+}) {
+  const [tabState, setTabState] = useTabState(tab, historyTabStateSchema, {
+    limit: historyLimit,
+    selection: null,
+  });
+  const { limit, selection } = tabState;
   const [width, setWidth] = useState(320);
   const panelRef = useRef<View>(null);
   const [menu, setMenu] = useState<BookmarkMenuTarget | null>(null);
@@ -184,7 +206,12 @@ function History({
                     hostId={host.id}
                     workspaceId={workspaceId}
                     disabled={bookmarks.busy}
-                    onSelect={() => setSelection(change)}
+                    onSelect={() =>
+                      setTabState({
+                        ...tabState,
+                        selection: { commitId: change.commitId, changeId: change.changeId },
+                      })
+                    }
                     onMove={(bookmark, target) => {
                       void bookmarks
                         .run({
@@ -258,7 +285,12 @@ function History({
               ListFooterComponent={
                 history.hasMore ? (
                   <Pressable
-                    onPress={() => setLimit(Math.min(limit + historyLimit, maxHistoryLimit))}
+                    onPress={() =>
+                      setTabState({
+                        ...tabState,
+                        limit: Math.min(limit + historyLimit, maxHistoryLimit),
+                      })
+                    }
                     disabled={limit >= maxHistoryLimit || query.isFetching}
                     accessibilityRole="button"
                     style={styles.loadMore}

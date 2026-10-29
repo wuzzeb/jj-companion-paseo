@@ -6,7 +6,6 @@ export default function contribute(client: PluginClientContext) {
     id: "history",
     title: "jj Companion",
     icon: "GitGraph",
-    context: "workspace",
     locations: ["explorer", "workspace"],
     Component: HistoryPanel,
   });

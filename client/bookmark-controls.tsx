@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Icon, Modal, TextInput, ScrollView } from "@getpaseo/plugin/client/react-native";
+import { Icon, Modal, TextInput, ScrollView } from "@getpaseo/plugin/client/ui";
 import type { BookmarkAction, BookmarkTarget } from "../shared/bookmarks.js";
 import type { useBookmarks } from "./use-bookmarks.js";
 import { BookmarkMenu, type BookmarkMenuTarget } from "./bookmark-menu.js";

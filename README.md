@@ -35,7 +35,7 @@ Selecting a base creates a new jj workspace on that commit, without creating a n
 jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
 arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
 
-Requires Paseo 0.12.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
+Requires Paseo 0.13.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
 Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
 worktree alongside the jj workspace. Non-colocated sources remain non-colocated. Paths refer to the
 machine running the Paseo daemon.
@@ -56,14 +56,19 @@ paseo plugin reload jj-companion
 
 The plugin also provides a **jj Companion** history tab in Paseo’s Explorer sidebar. Open it from
 the Explorer’s **+** menu, or search for **Open jj history** in the Command Center. It can also be
-moved into a regular workspace pane. On compact layouts, open a new workspace tab and choose **jj
-Companion**.
+moved into a regular workspace pane. The Explorer uses the same tabs and **+** menu on phones,
+tablets, and desktop.
 
 The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
 conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
 Selection follows a rewritten change when its change ID remains unambiguous. History starts with the
 latest 200 visible revisions across all branches; **Load older changes** expands it up to 1,000
 revisions. Connections to history outside the loaded rows end in faded stubs.
+
+Each history tab remembers its selected change and loaded history depth across app reloads using
+Paseo's persisted tab state. Invalid saved state falls back to the latest 200 changes and automatic
+selection. Only change and commit IDs are saved for the selection; details come from refreshed
+history.
 
 History refreshes every 10 seconds while the app is active, and the refresh button reloads it
 immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata
@@ -146,7 +151,7 @@ are deleted too; jj does not preserve them in that snapshot. Ownership is record
 `.jj/paseo-jj-workspace-plugin.json`, are still recognized. Unmarked workspaces and directories
 outside the managed root are retained.
 
-Paseo 0.12 background creation uses the same isolation behavior: directory sources stay Local, and
+Background creation uses the same isolation behavior: directory sources stay Local, and
 worktree sources create jj workspaces. Background status and caller context are preserved. Cleanup
 explicitly includes background workspaces, even when they are hidden from the sidebar.
 

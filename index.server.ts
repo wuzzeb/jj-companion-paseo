@@ -11,17 +11,17 @@ export default function contribute(server: PluginServerContext) {
   server.handle(bookmarkActionRpc, bookmarks.start);
   server.handle(bookmarkOperationRpc, bookmarks.operation);
   server.handle(historyRpc, listHistory);
-  server.before("agent.create", ({ request }, context) =>
+  server.addHook("agent.create.before", ({ request }, context) =>
     configureCodexAgent({ request, signal: context.signal }),
   );
-  server.before("workspace.create", ({ request }, context) =>
+  server.addHook("workspace.create.before", ({ request }, context) =>
     createWorkspace({
       request,
       signal: context.signal,
       listProjects: context.paseo.projects.list,
     }),
   );
-  server.on("workspace.archived", ({ workspace }, context) =>
+  server.addHook("workspace.archive.after", ({ workspace }, context) =>
     archiveWorkspace({
       workspace,
       signal: context.signal,

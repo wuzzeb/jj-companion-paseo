@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { promisify } from "node:util";
 import { z } from "zod";
 import type {
-  PluginBeforeRequests,
+  PluginHookRequests,
   PluginHookContext,
   PluginHookWorkspace,
 } from "@getpaseo/plugin/server";
@@ -26,7 +26,7 @@ const ownershipSchema = z
 const markerName = "paseo-jj-companion.json";
 // Workspaces created before the rename remain owned by this plugin.
 const legacyMarkerName = "paseo-jj-workspace-plugin.json";
-type WorkspaceRequest = PluginBeforeRequests["workspace.create"];
+type WorkspaceRequest = PluginHookRequests["workspace.create.before"];
 type ListWorkspaces = PluginHookContext["paseo"]["workspaces"]["list"];
 type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
 type WorkspacePage = Pick<WorkspaceListResult, "pageInfo"> & {
@@ -97,10 +97,10 @@ export async function configureCodexAgent({
   signal,
   readWritableRoots = readCodexWritableRoots,
 }: {
-  request: PluginBeforeRequests["agent.create"];
+  request: PluginHookRequests["agent.create.before"];
   signal: AbortSignal;
   readWritableRoots?: typeof readCodexWritableRoots;
-}): Promise<PluginBeforeRequests["agent.create"]> {
+}): Promise<PluginHookRequests["agent.create.before"]> {
   signal.throwIfAborted();
   if (request.config.provider !== "codex") return request;
   const cwd = await realpath(expandHome(request.config.cwd));

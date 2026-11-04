@@ -6,8 +6,14 @@ It follows Paseo's isolation picker: **Local** uses the selected directory witho
 workspace; **New worktree** creates a jj workspace inside a jj repository, based on the selected Git
 branch. Git-only repositories and ordinary directories keep Paseo's behavior.
 
-The plugin uses `server.before("workspace.create")` to run `jj workspace add`, then gives Paseo the
-resulting directory. Each workspace lives at:
+The plugin uses `server.addHook("workspace.create.before")` to run `jj workspace add`, then gives
+Paseo the resulting directory. Paseo 0.15's `worktree.create.before` hook changes Git creation
+options but still requires Paseo to run `git worktree add`; it cannot replace creation with
+`jj workspace add`. The plugin therefore keeps jj creation in `workspace.create.before`, including
+its own awaited setup. Paseo's `worktree.create.after` hook and built-in `.worktreeinclude` copying
+do not run for these jj workspaces. Use `worktree.setup` to copy any local files they need.
+
+Each workspace lives at:
 
 ```text
 ~/projects/paseo-workspaces/<projectname>-<adjective>-<animal>
@@ -35,7 +41,7 @@ Selecting a base creates a new jj workspace on that commit, without creating a n
 jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
 arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
 
-Requires Paseo 0.13.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
+Requires Paseo 0.15.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
 Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
 worktree alongside the jj workspace. Non-colocated sources remain non-colocated. Paths refer to the
 machine running the Paseo daemon.
@@ -151,9 +157,9 @@ are deleted too; jj does not preserve them in that snapshot. Ownership is record
 `.jj/paseo-jj-workspace-plugin.json`, are still recognized. Unmarked workspaces and directories
 outside the managed root are retained.
 
-Background creation uses the same isolation behavior: directory sources stay Local, and
-worktree sources create jj workspaces. Background status and caller context are preserved. Cleanup
-explicitly includes background workspaces, even when they are hidden from the sidebar.
+Background creation uses the same isolation behavior: directory sources stay Local, and worktree
+sources create jj workspaces. Background status and caller context are preserved. Cleanup explicitly
+includes background workspaces, even when they are hidden from the sidebar.
 
 Archive events are best effort. A missed event or failed removal leaves the directory behind;
 failures appear in `paseo plugin logs jj-companion`. There is no automatic retry after a missed
@@ -180,8 +186,8 @@ pnpm lint
 pnpm test
 ```
 
-For Codex agents opened in a jj workspace, the `agent.create` hook adds the shared `.jj` directory,
-the common Git directory, and the exact Git worktree directory to
+For Codex agents opened in a jj workspace, the `agent.create.before` hook adds the shared `.jj`
+directory, the common Git directory, and the exact Git worktree directory to
 `sandbox_workspace_write.writable_roots`. Codex protects a `.git` pointer's destination even when
 its parent is writable, so the exact worktree directory is necessary.
 

@@ -15,7 +15,7 @@ import { basename, join } from "node:path";
 import { after, test, type TestContext } from "node:test";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import type { PluginBeforeRequests, PluginHookContext } from "@getpaseo/plugin/server";
+import type { PluginHookRequests, PluginHookContext } from "@getpaseo/plugin/server";
 import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./workspaces.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
 import { readCodexWritableRoots } from "./codex-config.js";
@@ -90,7 +90,7 @@ test("Codex roots preserve config and agent roots and include the exact linked G
   const { stdout } = await execFileAsync("git", ["rev-parse", "--absolute-git-dir"], {
     cwd: workspace,
   });
-  const request: PluginBeforeRequests["agent.create"] = {
+  const request: PluginHookRequests["agent.create.before"] = {
     config: {
       provider: "codex",
       cwd: join(alias, "package"),
@@ -231,7 +231,7 @@ for (const colocated of [true, false]) {
     await writeFile(join(repo, "paseo.json"), JSON.stringify({ worktree: { setup: "exit 7" } }));
     const operation = await jj(repo, "op", "log", "--limit", "1", "--no-graph", "-T", "id");
     for (const path of [repo, join(alias, "package")]) {
-      const request: PluginBeforeRequests["workspace.create"] = {
+      const request: PluginHookRequests["workspace.create.before"] = {
         source: { kind: "directory", path, projectId: "project" },
         title: "Local task",
         workspaceId: "wks_local",
@@ -267,7 +267,7 @@ for (const colocated of [true, false]) {
 
 test("New worktree creates a registered jj workspace from the source parents and uses its name as the title", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
-  const request: PluginBeforeRequests["workspace.create"] = {
+  const request: PluginHookRequests["workspace.create.before"] = {
     source: { kind: "worktree", cwd: repo, projectId: "project" },
     title: "A task",
     workspaceId: "wks_0123456789abcdef",
@@ -332,7 +332,7 @@ test("preserves a subdirectory selected through a symlink in a non-colocated rep
 
 test("converts project-only Worktree requests and uses unique names for concurrent creation", async (t) => {
   const { repo, workspacesRoot } = await repository(t);
-  const request: PluginBeforeRequests["workspace.create"] = {
+  const request: PluginHookRequests["workspace.create.before"] = {
     source: { kind: "worktree", projectId: "project", action: "branch-off" },
   };
   const results = await Promise.all([

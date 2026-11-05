@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,6 +27,7 @@ test("concurrent root and child review requests share one managed window; siblin
   let commands: ReadonlyArray<string> = [];
   let starting = true;
   const review = createReviewLauncher({
+    niriSocket: null,
     socketDirectory,
     available: async (socket) => sockets.has(socket),
     launch: (workspace, socket) => {
@@ -73,6 +75,7 @@ test("reload reuses its existing window and a closed editor can be relaunched", 
   const sockets = new Set<string>();
   let launches = 0;
   const options = {
+    niriSocket: null,
     socketDirectory,
     available: async (socket: string) => sockets.has(socket),
     launch: (_: string, socket: string) => {
@@ -97,6 +100,7 @@ test("reload reuses its existing window and a closed editor can be relaunched", 
 test("startup errors and existing-editor errors are surfaced without duplicate launches", async (t) => {
   const { workspace, socketDirectory } = await fixture(t);
   const failed = createReviewLauncher({
+    niriSocket: null,
     socketDirectory,
     available: async () => false,
     launch: () => () => new Error("No desktop session"),
@@ -105,6 +109,7 @@ test("startup errors and existing-editor errors are surfaced without duplicate l
   await failed.dispose();
   let launches = 0;
   const existing = createReviewLauncher({
+    niriSocket: null,
     socketDirectory,
     available: async () => true,
     launch: () => {
@@ -117,6 +122,7 @@ test("startup errors and existing-editor errors are surfaced without duplicate l
   await assert.rejects(existing.open(workspace, workspace), /Wrong workspace/);
   assert.equal(launches, 0);
   const timeout = createReviewLauncher({
+    niriSocket: null,
     socketDirectory,
     available: async () => false,
     launch: () => () => null,
@@ -212,3 +218,63 @@ package.preload['diffview.lib'] = function() return {
   assert.equal(failure.status, "error");
   assert.match(failure.message, /could not open/);
 });
+
+test("Niri failure returns a warning after the diff opens", async (t) => {
+  const { workspace, directory, socketDirectory } = await fixture(t);
+  let opened = false;
+  const review = createReviewLauncher({
+    socketDirectory,
+    niriSocket: join(directory, "missing-niri.sock"),
+    available: async () => true,
+    send: async () => {
+      opened = true;
+      return '{"status":"ready"}';
+    },
+  });
+  t.after(() => review.dispose());
+  const result = await review.open(workspace, workspace);
+  assert.equal(opened, true);
+  assert.equal(result.launched, false);
+  assert.match(result.warning!, /Diff opened, but Niri workspace placement failed/);
+});
+
+test(
+  "an upgrade to XDG_RUNTIME_DIR reuses a private legacy socket",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { workspace, directory } = await fixture(t);
+    const runtime = join(directory, "runtime");
+    await mkdir(runtime, { mode: 0o700 });
+    const previousRuntime = process.env.XDG_RUNTIME_DIR;
+    const previousTemporary = process.env.TMPDIR;
+    const legacy = join(directory, `paseo-jj-review-${process.getuid!()}`);
+    await mkdir(legacy, { mode: 0o700 });
+    const key = createHash("sha256").update(workspace).digest("hex").slice(0, 24);
+    const oldSocket = join(legacy, `${key}.sock`);
+    try {
+      process.env.XDG_RUNTIME_DIR = runtime;
+      process.env.TMPDIR = directory;
+      const review = createReviewLauncher({
+        niriSocket: null,
+        available: async (socket) => socket === oldSocket,
+        launch: () => {
+          throw new Error("An existing editor must not be duplicated");
+        },
+        send: async (socket) => {
+          assert.equal(socket, oldSocket);
+          return '{"status":"ready"}';
+        },
+      });
+      try {
+        assert.deepEqual(await review.open(workspace, workspace), { launched: false });
+      } finally {
+        await review.dispose();
+      }
+    } finally {
+      if (previousRuntime === undefined) delete process.env.XDG_RUNTIME_DIR;
+      else process.env.XDG_RUNTIME_DIR = previousRuntime;
+      if (previousTemporary === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previousTemporary;
+    }
+  },
+);

@@ -1,21 +1,26 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, realpath, unlink } from "node:fs/promises";
+import { lstat, realpath, unlink } from "node:fs/promises";
 import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { RpcInput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { reviewBranchRpc } from "../shared/review.js";
+import { createNiriReview } from "./niri.js";
 import { findJjRoot, resolveRepository } from "./repository.js";
+import {
+  ensureReviewDirectory,
+  legacyReviewDirectory,
+  reviewDirectory,
+} from "./review-directory.js";
 
 const execute = promisify(execFile);
 const identity = "vim.g.paseo_jj_review_workspace";
 const resultSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("ready") }),
+  z.object({ status: z.literal("ready"), neovidePid: z.number().int().positive().optional() }),
   z.object({ status: z.literal("starting") }),
   z.object({ status: z.literal("error"), message: z.string() }),
 ]);
@@ -40,7 +45,7 @@ export function reviewExpression(workspace: string, repository: string) {
       if not (view.tabpage and vim.api.nvim_tabpage_is_valid(view.tabpage)) then view:open() end
     end)
     if not opened then return vim.json.encode({status='error', message=tostring(err)}) end
-    return vim.json.encode({status='ready'})
+    return vim.json.encode({status='ready', neovidePid=vim.g.neovide and vim.uv.os_getppid() or nil})
   end)()`,
     { workspace, repository },
   );
@@ -65,7 +70,7 @@ async function socketAvailable(socket: string): Promise<boolean> {
   });
 }
 
-function launchNeovide(workspace: string, socket: string) {
+function launchNeovide(workspace: string, socket: string, appId: string) {
   let failure: Error | null = null;
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
@@ -79,6 +84,10 @@ function launchNeovide(workspace: string, socket: string) {
     "neovide",
     [
       "--no-fork",
+      "--wayland-app-id",
+      appId,
+      "--x11-wm-class",
+      appId,
       "--",
       "--listen",
       socket,
@@ -107,16 +116,20 @@ function launchNeovide(workspace: string, socket: string) {
 interface ReviewOptions {
   readonly socketDirectory?: string;
   readonly available?: (socket: string) => Promise<boolean>;
-  readonly launch?: (workspace: string, socket: string) => () => Error | null;
+  readonly niriSocket?: string | null;
+  readonly launch?: (workspace: string, socket: string, appId: string) => () => Error | null;
   readonly send?: (socket: string, expression: string, signal: AbortSignal) => Promise<string>;
   readonly startupTimeout?: number;
 }
 
 export function createReviewLauncher(options: ReviewOptions = {}) {
   const lifetime = new AbortController();
-  const queues = new Map<string, Promise<{ readonly launched: boolean }>>();
-  const directory =
-    options.socketDirectory ?? join(tmpdir(), `paseo-jj-review-${process.getuid?.() ?? "user"}`);
+  const queues = new Map<
+    string,
+    Promise<{ readonly launched: boolean; readonly warning?: string }>
+  >();
+  const directory = async () => options.socketDirectory ?? (await reviewDirectory());
+  const arrange = createNiriReview({ socket: options.niriSocket });
   const available = options.available ?? socketAvailable;
   const launch = options.launch ?? launchNeovide;
   const send =
@@ -126,23 +139,40 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
         timeout: 4000,
         maxBuffer: 64 * 1024,
         signal,
-        env: { ...process.env, NVIM_LOG_FILE: join(directory, "nvim.log") },
+        env: { ...process.env, NVIM_LOG_FILE: join(await directory(), "nvim.log") },
       });
       return stdout;
     });
 
-  async function open(workspace: string, repository: string) {
+  async function open(workspace: string, repository: string, name: string) {
     lifetime.signal.throwIfAborted();
-    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const socketDirectory = await directory();
+    await ensureReviewDirectory(socketDirectory);
     const key = createHash("sha256").update(workspace).digest("hex").slice(0, 24);
-    const socket = join(directory, `${key}.sock`);
-    const launched = !(await available(socket));
+    let socket = join(socketDirectory, `${key}.sock`);
+    const appId = `paseo-jj-review-${key}`;
+    let launched = !(await available(socket));
+    if (launched && !options.socketDirectory && socketDirectory !== legacyReviewDirectory()) {
+      const legacy = legacyReviewDirectory();
+      const exists = await lstat(legacy).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (exists) {
+        await ensureReviewDirectory(legacy);
+        const previousSocket = join(legacy, `${key}.sock`);
+        if (await available(previousSocket)) {
+          socket = previousSocket;
+          launched = false;
+        }
+      }
+    }
     let failure: () => Error | null = () => null;
     if (launched) {
       await unlink(socket).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") throw error;
       });
-      failure = launch(workspace, socket);
+      failure = launch(workspace, socket, appId);
     }
     const deadline = Date.now() + (options.startupTimeout ?? 15_000);
     while (true) {
@@ -153,7 +183,10 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
         const result = resultSchema.parse(
           JSON.parse(await send(socket, reviewExpression(workspace, repository), lifetime.signal)),
         );
-        if (result.status === "ready") return { launched };
+        if (result.status === "ready") {
+          const warning = await arrange(appId, name, result.neovidePid, lifetime.signal);
+          return { launched, ...(warning ? { warning } : {}) };
+        }
         if (result.status === "error") throw new Error(result.message);
       } else if (!launched) {
         throw new Error("The review editor closed. Try again to launch a new window.");
@@ -166,12 +199,12 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
     }
   }
 
-  async function enqueue(workspace: string, repository: string) {
+  async function enqueue(workspace: string, repository: string, name = basename(workspace)) {
     const canonical = await realpath(workspace);
     const previous = queues.get(canonical) ?? Promise.resolve({ launched: false });
     const pending = previous
       .catch(() => {})
-      .then(() => open(canonical, repository))
+      .then(() => open(canonical, repository, name))
       .finally(() => {
         if (queues.get(canonical) === pending) queues.delete(canonical);
       });
@@ -191,7 +224,7 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
       const root = await findJjRoot(directory);
       const selected = await resolveRepository(directory, repository);
       if (!root || !selected) throw new Error("This workspace is not in a jj repository.");
-      return enqueue(root, selected);
+      return enqueue(root, selected, workspace.name?.trim() || basename(root));
     },
     async dispose() {
       lifetime.abort();

@@ -101,9 +101,21 @@ Requires `neovide` and `nvim` on the daemon's PATH, diffview-plus in the user's 
 configuration, and a local desktop session accessible to the daemon. This action opens the live
 working-copy comparison, independent of the selected graph row. It controls only editors launched by
 this plugin; existing editor windows are untouched. Reuse survives plugin reloads, and closing the
-editor lets the next click launch a new one. The plugin does not close editors on unload or raise an
-existing Neovide window automatically. Remote daemon launches run on that daemon's machine. The
-button is hidden on compact layouts and native mobile clients.
+editor lets the next click launch a new one. The plugin does not close editors on unload. Remote
+daemon launches run on that daemon's machine. The button is hidden on compact layouts and native
+mobile clients.
+
+When the daemon has `NIRI_SOCKET`, Review also creates or reuses a Niri workspace named after the
+Paseo workspace (for example, `golden-otter`), moves the managed Neovide window there, and switches
+to that workspace. New names use an empty unnamed workspace, preferring the Neovide window's
+monitor. Existing named workspaces are reused, and their other windows stay in place. Named
+workspaces remain after closing the editor. A placement error shows a warning after the diff opens;
+without Niri, the launcher simply opens the diff.
+
+Editor sockets live in `$XDG_RUNTIME_DIR/paseo-jj-review`, with a private directory under the system
+temporary directory as a fallback. Existing directories must be owned by the current user and have
+no group or other permissions. Plugin reloads can also reuse sockets from the previous temporary
+directory location.
 
 The history toolbar provides **Create bookmark**, **Tug**, **Push**, and **Fetch**. These shortcuts
 act on the workspace’s edited change (`@`), independently of the selected graph row. If `@` is empty

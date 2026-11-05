@@ -21,6 +21,9 @@ export function ReviewButton({
   const review = useMutation({
     mutationFn: () => open({ workspaceId, repository }),
     onError: (error) => toast.error(error.message),
+    onSuccess: (result) => {
+      if (result.warning) toast.show(result.warning, { variant: "warning" });
+    },
     retry: false,
   });
   const busy = review.isPending;

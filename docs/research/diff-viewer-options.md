@@ -106,12 +106,14 @@ repurpose an unrelated running editor just because it is the first reachable soc
 review requests for each workspace so concurrent clicks reuse the same managed process. Each request
 opens or reveals its own Diffview comparison tab according to diffview-plus behavior.
 
-Use a private runtime directory and a short hash in socket filenames. Serialize launches per
-workspace. Check the deterministic socket, validate its workspace identity, and dispatch if healthy.
-Otherwise spawn Neovide in the workspace with Neovim's `--listen <socket>` arguments passed after
-`--`, then wait with a bounded timeout for both RPC and diffview-plus readiness. A socket appearing
-is not proof that a lazy-loaded command is ready. Do not delete a live socket or launch a second
-window merely because an RPC times out.
+Use `$XDG_RUNTIME_DIR/paseo-jj-review`, falling back to a private user-specific temporary directory,
+and a short hash in socket filenames. Validate ownership, directory type, and private permissions
+before using existing directories; retain reuse of live sockets at the old temporary location.
+Serialize launches per workspace. Check the deterministic socket, validate its workspace identity,
+and dispatch if healthy. Otherwise spawn Neovide in the workspace with Neovim's `--listen <socket>`
+arguments passed after `--`, then wait with a bounded timeout for both RPC and diffview-plus
+readiness. A socket appearing is not proof that a lazy-loaded command is ready. Do not delete a live
+socket or launch a second window merely because an RPC times out.
 
 Prefer an acknowledged RPC/Lua call over simulating keystrokes. `--remote-send` can implement the
 user's idea, but insert mode, prompts, command-line input, and quoting complicate its reliability.
@@ -119,7 +121,7 @@ user's idea, but insert mode, prompts, command-line input, and quoting complicat
 entry after plugin loading. Return a structured success or error; do not treat queued input as proof
 that the diff opened. The transport must not interpolate paths or revsets into shell code.
 
-### Launching and focusing are separate
+### Niri workspace placement follows successful review opening
 
 Neovide can start Neovim or attach to an existing server. `neovide --server <socket>` attaches a
 GUI; it does not mean “raise the already attached window.” Launch a new frontend only when needed,
@@ -127,6 +129,21 @@ and track whether an attached UI is Neovide. Its command line supports workspace
 window identifiers. A compositor-specific focus hook can use those identifiers, but focusing is
 separate from successful RPC delivery and must be tested in the user's session. [Neovide
 CLI][n-neovide].
+
+For this desktop, the launcher now uses Niri IPC when `NIRI_SOCKET` is present. It creates or reuses
+a workspace named after the Paseo workspace, moves only the managed Neovide window, and switches to
+that workspace. It does not request individual window activation. New names use an empty unnamed
+workspace, preferring the window's current monitor; occupied workspaces are never intentionally
+renamed. Workspace IDs avoid ambiguous per-monitor indices. Placement is serialized and emptiness is
+rechecked before naming. Named workspaces persist after the editor closes.
+[Niri named workspaces](https://niri-wm.github.io/niri/Configuration%3A-Named-Workspaces.html),
+[Niri IPC actions](https://niri-wm.github.io/niri/niri_ipc/enum.Action.html).
+
+New review frontends have a workspace-specific app ID. For an already-running managed frontend from
+the previous launcher, the acknowledged Neovim response includes its Neovide parent's PID; Niri can
+match that window without selecting an arbitrary editor. Placement runs only after the diff opens,
+and errors return a warning rather than failing the review. Without Niri, opening the diff retains
+the same behavior.
 
 All launcher commands run on the Paseo daemon host. The initial experiment targets the user's local
 Linux desktop session with Neovide installed. Verify that the daemon inherits the display/session
@@ -138,8 +155,11 @@ A scratch headless Neovim 0.12.6 probe verified an acknowledged `--remote-expr` 
 cwd/server identity, and exact argument transport for `fork_point(main|@)` plus a path containing
 spaces and an apostrophe. It used a mocked `diffview.open`, not the user's running editor. No GUI
 was launched. A subsequent headless integration using the installed diffview-plus plugin opened and
-reused the actual branch comparison successfully through the launcher. Neovide GUI startup and
-window focus remain unverified. The installed source and current upstream adapter were inspected as
+reused the actual branch comparison successfully through the launcher. Niri placement is covered
+with simulated compositor state and a real local IPC socket, including name reuse, multiple
+monitors, older managed windows, occupancy changes, and errors. Read-only requests to the installed
+Niri compositor verified its protocol. Actual GUI launch, workspace movement, and switching remain
+unverified in the live session. The installed source and current upstream adapter were inspected as
 well.
 
 ## Paseo integration constraints
@@ -494,9 +514,9 @@ remains to be measured; no speculative timing or memory figures are used here.
    this remains possible without blocking the immediate Neovide improvement.
 
 The branch launcher now uses a deterministic socket and launch-time ownership marker, with Neovide
-confirmed. No editor registration hook is needed. Automatic window focus remains separate. Renderer
-and parser dependencies can wait for the browser prototype. No editor configuration or live instance
-was changed during this report update.
+confirmed. No editor registration hook is needed. Niri workspace placement follows successful diff
+opening and reports failures separately. Renderer and parser dependencies can wait for the browser
+prototype. No editor configuration or live instance was changed during this report update.
 
 ## Sources and inspected revisions
 

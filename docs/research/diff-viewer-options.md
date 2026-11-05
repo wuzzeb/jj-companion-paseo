@@ -5,9 +5,10 @@ Research date: November 5, 2026.
 ## Recommendation
 
 Start with a **Review branch in Neovide** action that preserves the existing leader binding:
-`DiffviewOpen 'fork_point(main|@)'`. Reuse a Neovim instance associated with the Paseo workspace;
-launch Neovide when none is available. This removes workspace hunting while retaining the user's
-existing diffview-plus workflow. Neovide is the confirmed launch frontend.
+`DiffviewOpen 'fork_point(main|@)'`. Reuse only a Neovim instance originally launched by this plugin
+for the Paseo workspace; launch Neovide when none is available. Existing manually opened editors are
+outside the scope. This removes workspace hunting while retaining the user's existing diffview-plus
+workflow. Neovide is the confirmed launch frontend.
 
 The eventual in-app viewer is **desktop/web-only**. Phone support is explicitly out of scope, so
 React Native rendering and native mobile compatibility should not determine the renderer choice.
@@ -26,9 +27,9 @@ it is no longer the default based on cross-platform concerns. Keep the first vie
 side-by-side, and limited to file navigation, collapsed context, Show all, and reliable copying. Do
 not embed a Neovim GUI merely to obtain Diffview inside Paseo.
 
-This report specifies experiments; it does not add a launch button, dependencies, or editor
-configuration. The launcher can deliver value before implementing changed-file summaries or a web
-diff backend.
+The branch action is now implemented in jj Companion. It delivers value before implementing
+changed-file summaries or a web diff backend; no editor configuration hook or new dependency is
+needed. Web-renderer comparisons remain research and prototype work.
 
 ## Requirements and comparison
 
@@ -91,22 +92,22 @@ from workspace to editor. Neovim's CLI `--serverlist` is not supported. Automati
 on existing instances are useful, but must be discovered or registered. [Neovim remote
 API][n-remote].
 
-Use a small editor-side registration hook, or an explicit one-time registration command, to record
-`v:servername`, a canonical workspace path, and process identity in a per-user registry. Refresh
-registration when directory context changes and validate a record by RPC before use. This is needed
-to adopt an editor opened through the user's existing Snacks workflow, rather than only reusing
-instances launched by Paseo. Existing unregistered instances require that hook or bounded discovery;
-`--remote-send` alone will not find them automatically.
+The chosen scope is to control only windows launched by this plugin. Use a deterministic,
+workspace-keyed socket and a Neovim ownership variable set on launch. A later plugin instance can
+connect to the socket and validate that variable without a registry file, editor-side registration
+hook, process scan, or changes to the user's Snacks workflow. Leave all manually opened windows
+alone. A stale socket can be removed only after a refused connection; a responding but busy or
+unrecognized editor must not trigger a second launch.
 
 Key reuse by the **canonical Paseo workspace directory**, not the shared jj repository, a change ID,
 or the workspace nickname. Sibling workspaces need separate editors even though they share `.jj`.
 The root and its selected child repository can share one editor by passing `-C` per review. Never
-repurpose an unrelated running editor just because it is the first reachable socket. If several
-editors are registered to the same workspace, prefer the previously chosen instance or require a
-selection rather than guessing from window titles.
+repurpose an unrelated running editor just because it is the first reachable socket. Serialize
+review requests for each workspace so concurrent clicks reuse the same managed process. Each request
+opens or reveals its own Diffview comparison tab according to diffview-plus behavior.
 
 Use a private runtime directory and a short hash in socket filenames. Serialize launches per
-workspace. Check the recorded socket, validate its workspace identity, and dispatch if healthy.
+workspace. Check the deterministic socket, validate its workspace identity, and dispatch if healthy.
 Otherwise spawn Neovide in the workspace with Neovim's `--listen <socket>` arguments passed after
 `--`, then wait with a bounded timeout for both RPC and diffview-plus readiness. A socket appearing
 is not proof that a lazy-loaded command is ready. Do not delete a live socket or launch a second
@@ -136,9 +137,10 @@ plugin must not terminate an editor the user is working in.
 A scratch headless Neovim 0.12.6 probe verified an acknowledged `--remote-expr` round trip,
 cwd/server identity, and exact argument transport for `fork_point(main|@)` plus a path containing
 spaces and an apostrophe. It used a mocked `diffview.open`, not the user's running editor. No GUI
-was launched; actual plugin readiness, existing-instance registration, and Neovide window focus
-remain prototype tests. The installed diffview-plus source and current upstream adapter were
-inspected as well.
+was launched. A subsequent headless integration using the installed diffview-plus plugin opened and
+reused the actual branch comparison successfully through the launcher. Neovide GUI startup and
+window focus remain unverified. The installed source and current upstream adapter were inspected as
+well.
 
 ## Paseo integration constraints
 
@@ -472,9 +474,9 @@ remains to be measured; no speculative timing or memory figures are used here.
 
 1. **Deliver the branch launcher experiment first.** Add a desktop History action matching
    `DiffviewOpen 'fork_point(main|@)'`, explicitly scoped to the selected jj repository. Adopt a
-   registered Neovim instance for the workspace; launch Neovide otherwise. Test double clicks, stale
-   records, startup readiness, paths with spaces, nested repositories, and root/sibling workspace
-   isolation. Verify focus independently of RPC success. This needs no web diff engine or
+   plugin-managed Neovim instance for the workspace; launch Neovide otherwise. Test double clicks,
+   stale sockets, startup readiness, paths with spaces, nested repositories, and root/sibling
+   workspace isolation. Verify focus independently of RPC success. This needs no web diff engine or
    changed-file-summary RPC.
 2. **Handle the selected-change action accurately.** Use pinned endpoints for one-parent changes;
    test merged-parent baselines and temporary-directory lifetime before claiming merge support. Keep
@@ -491,9 +493,10 @@ remains to be measured; no speculative timing or memory figures are used here.
    eventually replace the web adapter. Keep comparison sessions independent from presentation so
    this remains possible without blocking the immediate Neovide improvement.
 
-The first implementation decision is now editor registration and local GUI launch/focus, with
-Neovide confirmed. Renderer and parser dependencies can wait for the browser prototype. No editor
-configuration or live instance was changed during this report update.
+The branch launcher now uses a deterministic socket and launch-time ownership marker, with Neovide
+confirmed. No editor registration hook is needed. Automatic window focus remains separate. Renderer
+and parser dependencies can wait for the browser prototype. No editor configuration or live instance
+was changed during this report update.
 
 ## Sources and inspected revisions
 

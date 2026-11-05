@@ -88,7 +88,22 @@ change and commit IDs are saved for the selection; details come from refreshed h
 History refreshes every 10 seconds while the app is active, and the refresh button reloads it
 immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata
 therefore reflects the latest jj snapshot, rather than unsnapshotted edits on disk. Git-only
-repositories and ordinary directories show an empty state. Diff viewing is a future addition.
+repositories and ordinary directories show an empty state. In-app diff viewing is a future addition.
+
+On desktop and web, the external-link button beside **History** opens **Review branch in Neovide**.
+It runs the equivalent of `DiffviewOpen 'fork_point(main|@)'` in the selected repository using
+[diffview-plus.nvim](https://github.com/dlyongemallo/diffview-plus.nvim). The first click launches
+Neovide for this jj workspace; later clicks send another review request to the same managed Neovim
+instance. The root and nested repositories share that window, and sibling jj workspaces get separate
+windows. Diffview decides whether to open a new tab or reuse an identical comparison.
+
+Requires `neovide` and `nvim` on the daemon's PATH, diffview-plus in the user's Neovim
+configuration, and a local desktop session accessible to the daemon. This action opens the live
+working-copy comparison, independent of the selected graph row. It controls only editors launched by
+this plugin; existing editor windows are untouched. Reuse survives plugin reloads, and closing the
+editor lets the next click launch a new one. The plugin does not close editors on unload or raise an
+existing Neovide window automatically. Remote daemon launches run on that daemon's machine. The
+button is hidden on compact layouts and native mobile clients.
 
 The history toolbar provides **Create bookmark**, **Tug**, **Push**, and **Fetch**. These shortcuts
 act on the workspace’s edited change (`@`), independently of the selected graph row. If `@` is empty

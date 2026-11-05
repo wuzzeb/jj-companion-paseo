@@ -16,6 +16,7 @@ import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
 import { useBookmarks } from "./use-bookmarks.js";
 import { BookmarkControls } from "./bookmark-controls.js";
+import { ReviewButton } from "./review-button.js";
 import { BookmarkChip } from "./bookmark-chip.js";
 import { ChangeRow } from "./change-row.js";
 import type { BookmarkMenuTarget } from "./bookmark-menu.js";
@@ -53,6 +54,7 @@ function History({
   tab,
   directory,
   workspaceName,
+  layout,
 }: PluginWorkspacePanelProps & {
   readonly directory: string | null;
   readonly workspaceName: string;
@@ -79,6 +81,7 @@ function History({
   return (
     <RepositoryHistory
       key={repository}
+      desktop={layout.platform === "web" && !layout.compact}
       theme={theme}
       host={host}
       workspaceId={workspaceId}
@@ -119,7 +122,9 @@ function RepositoryHistory({
   repositoryError,
   refreshRepositories,
   repositoryPicker,
+  desktop,
 }: Pick<PluginWorkspacePanelProps, "theme" | "host" | "workspaceId"> & {
+  readonly desktop: boolean;
   readonly directory: string | null;
   readonly workspaceName: string;
   readonly tabState: z.infer<typeof historyTabStateSchema>;
@@ -204,6 +209,14 @@ function RepositoryHistory({
         <Icon name="GitGraph" size={15} color={theme.colors.foregroundMuted} />
         <Text style={[styles.title, repositoryPicker ? { flex: 0 } : null]}>History</Text>
         {repositoryPicker}
+        {desktop ? (
+          <ReviewButton
+            theme={theme}
+            workspaceId={workspaceId}
+            repository={repository}
+            disabled={!history}
+          />
+        ) : null}
         <Pressable
           onPress={refresh}
           disabled={query.isFetching}

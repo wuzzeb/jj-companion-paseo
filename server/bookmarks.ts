@@ -13,7 +13,7 @@ const revisionTemplate =
   'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id()), "empty" => empty}) ++ "\\n"';
 const commitSchema = revisionSchema.extend({ parents: z.array(z.string()), empty: z.boolean() });
 const bookmarkTemplate =
-  'json({"name" => name, "remote" => remote, "tracked" => tracked, "conflict" => conflict, "targets" => added_targets.map(|c| c.commit_id())}) ++ "\\n"';
+  'json({"name" => name, "remote" => remote, "tracked" => tracked, "conflict" => conflict, "targets" => added_targets.filter(|c| c).map(|c| c.commit_id())}) ++ "\\n"';
 
 async function revisions(root: string, revset: string, operation = "@", signal?: AbortSignal) {
   return z.array(commitSchema).parse(

@@ -540,3 +540,21 @@ test("bookmark RPCs read and update only the selected child repository", async (
     /Repository is unavailable/,
   );
 });
+
+test("tracked remote bookmarks without a target remain valid JSON and do not affect local branch discovery", async (t) => {
+  const { repo } = await repository(t);
+  const before = await feature(repo);
+  await jj(repo, "bookmark", "track", "feature@origin");
+  const operation = () => runJj(repo, ["op", "log", "--no-graph", "-n", "1", "-T", "id"]);
+  const beforeOperation = await operation();
+  const state = await readBookmarkState(repo);
+  const remote = state.bookmarks.find(
+    (entry) => entry.name === "feature" && entry.remote === "origin",
+  );
+  assert.ok(remote);
+  assert.equal(remote.tracked, true);
+  assert.deepEqual(remote.targets, []);
+  assert.deepEqual(local(state, "feature").targets, local(before, "feature").targets);
+  assert.deepEqual(state.candidates, ["feature"]);
+  assert.equal(await operation(), beforeOperation);
+});

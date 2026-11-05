@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { createReviewLauncher } from "./server/review.js";
-import { reviewBranchRpc } from "./shared/review.js";
+import { reviewBranchRpc, reviewSelectionRpc } from "./shared/review.js";
 import { repositoriesRpc } from "./shared/repositories.js";
 import { listRepositories } from "./server/repository.js";
 import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./server/workspaces.js";
@@ -13,6 +13,7 @@ export default function contribute(server: PluginServerContext) {
   const bookmarks = createBookmarkOperations();
   const review = createReviewLauncher();
   server.handle(reviewBranchRpc, review.branch);
+  server.handle(reviewSelectionRpc, review.selection);
   server.handle(repositoriesRpc, async ({ workspaceId }, { paseo }) => {
     const workspace = await paseo.workspaces.ref(workspaceId).refresh();
     if (!workspace) throw new Error("Workspace is unavailable.");

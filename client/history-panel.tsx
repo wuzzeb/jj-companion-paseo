@@ -11,7 +11,9 @@ import {
 import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { repositoriesRpc, repositorySelectionSchema } from "../shared/repositories.js";
 import { RepositoryPicker } from "./repository-picker.js";
-import { historyLimit, historyRpc, maxHistoryLimit } from "../shared/history.js";
+import { historyLimit, historyRpc, maxHistoryLimit, type Change } from "../shared/history.js";
+import { linearRange } from "../shared/linear-range.js";
+import { mergeReviewMessage, type ReviewSelection } from "../shared/review.js";
 import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
 import { useBookmarks } from "./use-bookmarks.js";
@@ -23,14 +25,16 @@ import type { BookmarkMenuTarget } from "./bookmark-menu.js";
 import type { Bookmark, BookmarkTarget } from "../shared/bookmarks.js";
 
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
+const selectionSchema = z
+  .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
+  .readonly();
+const revision = ({ commitId, changeId }: Change) => ({ commitId, changeId });
 const historyTabStateSchema = z
   .object({
     repository: repositorySelectionSchema.default("."),
     limit: z.number().int().min(historyLimit).max(maxHistoryLimit),
-    selection: z
-      .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
-      .readonly()
-      .nullable(),
+    selection: selectionSchema.nullable(),
+    rangeEnd: selectionSchema.nullable().default(null),
   })
   .readonly();
 
@@ -63,6 +67,7 @@ function History({
     repository: ".",
     limit: historyLimit,
     selection: null,
+    rangeEnd: null,
   });
   const listRepositories = useRpc(repositoriesRpc);
   const repositories = useQuery({
@@ -77,7 +82,7 @@ function History({
   const state =
     repository === tabState.repository
       ? tabState
-      : { repository, limit: historyLimit, selection: null };
+      : { repository, limit: historyLimit, selection: null, rangeEnd: null };
   return (
     <RepositoryHistory
       key={repository}
@@ -101,7 +106,7 @@ function History({
             value={repository}
             theme={theme}
             onSelect={(repository) =>
-              setTabState({ repository, limit: historyLimit, selection: null })
+              setTabState({ repository, limit: historyLimit, selection: null, rangeEnd: null })
             }
           />
         ) : null
@@ -134,7 +139,7 @@ function RepositoryHistory({
   setTabState(state: z.infer<typeof historyTabStateSchema>): void;
   refreshRepositories(): void;
 }) {
-  const { limit, selection, repository } = tabState;
+  const { limit, selection, repository, rangeEnd: endIdentity } = tabState;
   const [width, setWidth] = useState(320);
   const panelRef = useRef<View>(null);
   const [menu, setMenu] = useState<BookmarkMenuTarget | null>(null);
@@ -153,6 +158,35 @@ function RepositoryHistory({
   const changes = history?.changes;
   const graph = useMemo(() => layoutGraph(changes ?? []), [changes]);
   const selected = changes ? resolveSelection(changes, selection) : null;
+  const end = changes && endIdentity ? resolveSelection(changes, endIdentity) : null;
+  const range = useMemo(
+    () =>
+      selected && end && changes ? linearRange(changes, selected.commitId, end.commitId) : null,
+    [selected, end, changes],
+  );
+  const reviewSelection: ReviewSelection | null = selected
+    ? endIdentity
+      ? { kind: "range", anchor: revision(selected), end: end ? revision(end) : endIdentity }
+      : { kind: "change", revision: revision(selected) }
+    : null;
+  const oldest = range?.at(-1) ?? selected;
+  const selectionError =
+    endIdentity && !end
+      ? "The other selected change is no longer in this history. Select the range again."
+      : endIdentity && !range
+        ? "Choose changes on the same linear stack. Load older history if the path is incomplete."
+        : oldest && oldest.parents.length > 1
+          ? mergeReviewMessage
+          : null;
+  const highlighted = useMemo(
+    () =>
+      new Set([
+        ...(range ?? []).map((change) => change.commitId),
+        ...(selected ? [selected.commitId] : []),
+        ...(end ? [end.commitId] : []),
+      ]),
+    [range, selected, end],
+  );
   const refsByCommit = useMemo(() => {
     const entries = new Map<string, Bookmark[]>();
     for (const bookmark of bookmarks.state.data?.bookmarks ?? []) {
@@ -276,7 +310,7 @@ function RepositoryHistory({
             <FlatList
               style={styles.list}
               data={history.changes}
-              extraData={selected?.commitId}
+              extraData={highlighted}
               keyExtractor={(change) => change.commitId}
               getItemLayout={(_, index) => ({
                 length: rowHeight,
@@ -285,7 +319,7 @@ function RepositoryHistory({
               })}
               initialNumToRender={20}
               renderItem={({ item: change, index }) => {
-                const active = change.commitId === selected?.commitId;
+                const active = highlighted.has(change.commitId);
                 const summary =
                   change.description.split("\n")[0] ||
                   (change.parents.length === 0 ? "root()" : "(no description)");
@@ -298,10 +332,15 @@ function RepositoryHistory({
                     workspaceId={workspaceId}
                     repository={repository}
                     disabled={bookmarks.busy}
-                    onSelect={() =>
+                    onSelect={(extend) =>
                       setTabState({
                         ...tabState,
-                        selection: { commitId: change.commitId, changeId: change.changeId },
+                        selection:
+                          desktop && extend && selected ? revision(selected) : revision(change),
+                        rangeEnd:
+                          desktop && extend && selected && selected.commitId !== change.commitId
+                            ? revision(change)
+                            : null,
                       })
                     }
                     onMove={(bookmark, target) => {
@@ -399,7 +438,32 @@ function RepositoryHistory({
             />
           </ScrollView>
 
-          {selected ? (
+          {desktop && selected ? (
+            <View style={styles.reviewControls}>
+              {endIdentity ? (
+                <Text style={styles.accent}>
+                  {range
+                    ? `${range.length} changes selected · ${range.at(-1)!.changeId.slice(0, 8)} → ${range[0].changeId.slice(0, 8)}`
+                    : "Range selection"}
+                </Text>
+              ) : null}
+              <ReviewButton
+                theme={theme}
+                workspaceId={workspaceId}
+                repository={repository}
+                selection={reviewSelection}
+                disabled={!!selectionError || !reviewSelection}
+              />
+              <Text style={selectionError ? styles.error : styles.muted}>
+                {selectionError ??
+                  (endIdentity
+                    ? "Click a change to clear the range."
+                    : "Shift-click another change to select a range.")}
+              </Text>
+            </View>
+          ) : null}
+
+          {selected && !endIdentity ? (
             <ScrollView style={styles.details} contentContainerStyle={styles.detailsContent}>
               <View style={styles.refs}>
                 <Text style={styles.detailId}>{selected.changeId.slice(0, 12)}</Text>
@@ -445,7 +509,7 @@ function RepositoryHistory({
                 <Text style={styles.error}>This change has conflicts.</Text>
               ) : null}
             </ScrollView>
-          ) : selection ? (
+          ) : !selected && selection ? (
             <Text style={styles.messageText}>
               The selected change is no longer in this history.
             </Text>
@@ -518,6 +582,14 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       backgroundColor: colors.surface1,
     },
     detailsContent: { padding: 12, gap: 7 },
+    reviewControls: {
+      padding: 8,
+      gap: 4,
+      alignItems: "flex-start",
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.surface1,
+    },
     detailId: { color: colors.foreground, fontFamily: mono, fontSize: 11 },
     description: { color: colors.foreground, fontSize: 12, lineHeight: 18 },
     fullCommitId: { color: colors.foregroundMuted, fontSize: 10, fontFamily: mono },

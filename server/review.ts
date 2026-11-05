@@ -8,7 +8,8 @@ import { promisify } from "node:util";
 import type { RpcInput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { z } from "zod";
-import { reviewBranchRpc } from "../shared/review.js";
+import { reviewBranchRpc, reviewSelectionRpc, type ReviewSelection } from "../shared/review.js";
+import { resolveReviewComparison } from "./review-comparison.js";
 import { createNiriReview } from "./niri.js";
 import { findJjRoot, resolveRepository } from "./repository.js";
 import {
@@ -30,7 +31,11 @@ function expression(code: string, data: unknown) {
   return `luaeval(${JSON.stringify(code)}, json_decode(${JSON.stringify(JSON.stringify(data))}))`;
 }
 
-export function reviewExpression(workspace: string, repository: string) {
+export function reviewExpression(
+  workspace: string,
+  repository: string,
+  revision = "fork_point(main|@)",
+) {
   return expression(
     `(function()
     if vim.v.vim_did_enter == 0 then return vim.json.encode({status='starting'}) end
@@ -40,14 +45,14 @@ export function reviewExpression(workspace: string, repository: string) {
     local ok, diffview = pcall(require, 'diffview')
     if not ok then return vim.json.encode({status='error', message='diffview-plus.nvim could not be loaded: '..tostring(diffview)}) end
     local opened, err = pcall(function()
-      local view = require('diffview.lib').diffview_open({'fork_point(main|@)', '-C'.._A.repository, '--adapter=jj'})
-      if not view then error('Diffview could not open the branch comparison. Check :messages in Neovide.') end
+      local view = require('diffview.lib').diffview_open({_A.revision, '-C'.._A.repository, '--adapter=jj'})
+      if not view then error('Diffview could not open the comparison. Check :messages in Neovide.') end
       if not (view.tabpage and vim.api.nvim_tabpage_is_valid(view.tabpage)) then view:open() end
     end)
     if not opened then return vim.json.encode({status='error', message=tostring(err)}) end
     return vim.json.encode({status='ready', neovidePid=vim.g.neovide and vim.uv.os_getppid() or nil})
   end)()`,
-    { workspace, repository },
+    { workspace, repository, revision },
   );
 }
 
@@ -144,7 +149,7 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
       return stdout;
     });
 
-  async function open(workspace: string, repository: string) {
+  async function open(workspace: string, repository: string, revision: string) {
     lifetime.signal.throwIfAborted();
     const socketDirectory = await directory();
     await ensureReviewDirectory(socketDirectory);
@@ -181,7 +186,9 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
       if (error) throw error;
       if (await available(socket)) {
         const result = resultSchema.parse(
-          JSON.parse(await send(socket, reviewExpression(workspace, repository), lifetime.signal)),
+          JSON.parse(
+            await send(socket, reviewExpression(workspace, repository, revision), lifetime.signal),
+          ),
         );
         if (result.status === "ready") {
           const warning = await arrange(
@@ -204,12 +211,20 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
     }
   }
 
-  async function enqueue(workspace: string, repository: string) {
+  async function enqueue(workspace: string, repository: string, selection?: ReviewSelection) {
     const canonical = await realpath(workspace);
     const previous = queues.get(canonical) ?? Promise.resolve({ launched: false });
     const pending = previous
       .catch(() => {})
-      .then(() => open(canonical, repository))
+      .then(async () =>
+        open(
+          canonical,
+          repository,
+          selection
+            ? await resolveReviewComparison(repository, selection, lifetime.signal)
+            : "fork_point(main|@)",
+        ),
+      )
       .finally(() => {
         if (queues.get(canonical) === pending) queues.delete(canonical);
       });
@@ -217,19 +232,25 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
     return pending;
   }
 
+  async function fromWorkspace(
+    { workspaceId, repository }: RpcInput<typeof reviewBranchRpc>,
+    { paseo }: PluginHandlerContext,
+    selection?: ReviewSelection,
+  ) {
+    const workspace = await paseo.workspaces.ref(workspaceId).refresh();
+    if (!workspace || workspace.archivingAt) throw new Error("Workspace is unavailable.");
+    const directory = await realpath(workspace.workspaceDirectory);
+    const root = await findJjRoot(directory);
+    const selected = await resolveRepository(directory, repository);
+    if (!root || !selected) throw new Error("This workspace is not in a jj repository.");
+    return enqueue(root, selected, selection);
+  }
+
   return {
     open: enqueue,
-    async branch(
-      { workspaceId, repository }: RpcInput<typeof reviewBranchRpc>,
-      { paseo }: PluginHandlerContext,
-    ) {
-      const workspace = await paseo.workspaces.ref(workspaceId).refresh();
-      if (!workspace || workspace.archivingAt) throw new Error("Workspace is unavailable.");
-      const directory = await realpath(workspace.workspaceDirectory);
-      const root = await findJjRoot(directory);
-      const selected = await resolveRepository(directory, repository);
-      if (!root || !selected) throw new Error("This workspace is not in a jj repository.");
-      return enqueue(root, selected);
+    branch: fromWorkspace,
+    selection(input: RpcInput<typeof reviewSelectionRpc>, context: PluginHandlerContext) {
+      return fromWorkspace(input, context, input.selection);
     },
     async dispose() {
       lifetime.abort();

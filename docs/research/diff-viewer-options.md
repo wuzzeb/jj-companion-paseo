@@ -84,6 +84,17 @@ default, so such a review integration must set buffers read-only deliberately. S
 most-used branch action rather than allowing this less-common case to delay reuse. [Directory
 comparisons][d-doc], [jj adapter][d-adapter].
 
+The launcher now also provides **Review change** and **Review range** for linear selections.
+Shift-click extends a selection along ancestry, including both endpoints, rather than selecting all
+intervening displayed rows. An explicit review snapshots edits, pins one operation, resolves the
+selected change identities, and sends concrete `<parent-of-oldest>..<newest>` commit endpoints to
+the existing managed editor. A unique rewrite can be followed by change ID; missing or ambiguous
+identities fail explicitly. Cross-branch ranges, ranges crossing merges, and merge changes at the
+oldest boundary are rejected. The merged-parent directory export lifecycle remains deferred. A
+headless integration with the installed diffview-plus opened a selected change and a two-change
+range, verified their file lists, and confirmed both endpoints stayed pinned while `@` was on a
+different change. The Shift-click interaction still needs a live Paseo browser check.
+
 ### Identify a workspace editor rather than any running editor
 
 `--listen` establishes an RPC endpoint; `--server` chooses one; `--remote-send` sends keys; and
@@ -500,9 +511,9 @@ remains to be measured; no speculative timing or memory figures are used here.
    stale sockets, startup readiness, paths with spaces, nested repositories, and root/sibling
    workspace isolation. Verify focus independently of RPC success. This needs no web diff engine or
    changed-file-summary RPC.
-2. **Handle the selected-change action accurately.** Use pinned endpoints for one-parent changes;
-   test merged-parent baselines and temporary-directory lifetime before claiming merge support. Keep
-   live external review and immutable in-app review distinct.
+2. **Complete merge-change review.** One-parent changes and linear ranges now use pinned endpoints.
+   Test merged-parent directory exports and temporary-directory lifetime before enabling merge
+   selections. Keep live branch review and fixed selected comparisons distinct.
 3. **Prototype existing browser viewers in an actual Paseo tab.** Compare JayJay's standalone pane
    with `react-diff-view`. Prove generated inline CSS, host React compatibility, text selection,
    copying from one side, wrapped lines, Show all, resizing, and a 10,000-line file. Supply real jj

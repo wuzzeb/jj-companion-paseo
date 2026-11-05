@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Change } from "../shared/history.js";
 import { layoutGraph, nodeY, resolveSelection, rowHeight } from "./graph.js";
+import { linearRange } from "../shared/linear-range.js";
 
 function change(commitId: string, parents: string[] = []): Change {
   return {
@@ -83,4 +84,40 @@ test("selection follows a rewrite only when its change ID is unambiguous", () =>
   const workingCopy = { ...change("working"), isWorkingCopy: true };
   assert.equal(resolveSelection([original, workingCopy], null), workingCopy);
   assert.equal(resolveSelection([original, rewritten], original), original);
+});
+
+test("review ranges include both endpoints in ancestry order and skip interleaved branches", () => {
+  const changes = [
+    change("tip", ["middle"]),
+    change("other", ["base"]),
+    change("middle", ["oldest"]),
+    change("oldest", ["base"]),
+    change("base"),
+  ];
+  for (const [anchor, end] of [
+    ["tip", "oldest"],
+    ["oldest", "tip"],
+  ]) {
+    assert.deepEqual(
+      linearRange(changes, anchor, end)?.map((change) => change.commitId),
+      ["tip", "middle", "oldest"],
+    );
+  }
+  assert.deepEqual(
+    linearRange(changes, "tip", "tip")?.map((change) => change.commitId),
+    ["tip"],
+  );
+  assert.equal(linearRange(changes, "tip", "other"), null);
+});
+
+test("review ranges refuse missing ancestry and paths crossing merges", () => {
+  assert.equal(linearRange([change("tip", ["missing"]), change("base")], "tip", "base"), null);
+  assert.equal(
+    linearRange(
+      [change("merge", ["left", "right"]), change("left"), change("right")],
+      "merge",
+      "left",
+    ),
+    null,
+  );
 });

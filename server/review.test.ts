@@ -213,6 +213,16 @@ package.preload['diffview.lib'] = function() return {
     status: "ready",
   });
   assert.equal(await rpc("g:review_count"), "2");
+  const range = "a".repeat(40) + ".." + "b".repeat(40);
+  assert.equal(
+    JSON.parse(await rpc(reviewExpression(workspace, workspace, range))).status,
+    "ready",
+  );
+  assert.deepEqual(JSON.parse(await rpc('luaeval("vim.json.encode(vim.g.review_args)")')), [
+    range,
+    `-C${workspace}`,
+    "--adapter=jj",
+  ]);
   assert.equal(JSON.parse(await rpc(reviewExpression("unrelated", workspace))).status, "error");
   await rpc('luaeval("(function() vim.g.fail_review=true; return true end)()")');
   const failure = JSON.parse(await rpc(reviewExpression(workspace, workspace)));

@@ -26,7 +26,7 @@ export function ChangeRow({
   workspaceId: string;
   readonly repository: string;
   disabled: boolean;
-  onSelect(): void;
+  onSelect(extend: boolean): void;
   onMove(bookmark: Bookmark, target: Change): void;
 }) {
   const ref = useRef<View>(null);
@@ -60,7 +60,9 @@ export function ChangeRow({
       accessibilityRole="button"
       accessibilityLabel={`${change.isWorkingCopy ? "Working copy, " : ""}${summary}, ${change.changeId.slice(0, 8)}`}
       accessibilityState={{ selected: active }}
-      onPress={onSelect}
+      onPress={(event) =>
+        onSelect("shiftKey" in event.nativeEvent && event.nativeEvent.shiftKey === true)
+      }
       testID={`jj-change-${change.commitId}`}
       style={({ pressed }) => ({
         flexDirection: "row",

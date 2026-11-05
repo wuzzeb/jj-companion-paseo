@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
@@ -236,6 +237,79 @@ test("Niri failure returns a warning after the diff opens", async (t) => {
   assert.equal(opened, true);
   assert.equal(result.launched, false);
   assert.match(result.warning!, /Diff opened, but Niri workspace placement failed/);
+});
+
+test("Niri review separates project directories with the same Paseo nickname, including nested repositories", async (t) => {
+  const { directory, socketDirectory } = await fixture(t);
+  const niriSocket = join(directory, "niri.sock");
+  const projects = ["project-a-golden-otter", "project-b-golden-otter"];
+  let actions: ReadonlyArray<unknown> = [];
+  const server = createServer((connection) => {
+    connection.setEncoding("utf8");
+    let buffer = "";
+    connection.on("data", (data: string) => {
+      buffer += data;
+      if (!buffer.includes("\n")) return;
+      const request: unknown = JSON.parse(buffer.trim());
+      const response =
+        request === "Windows"
+          ? { Windows: [{ id: 7, app_id: "neovide", pid: 70, workspace_id: 1 }] }
+          : request === "Workspaces"
+            ? {
+                Workspaces: ["golden-otter", ...projects].map((name, index) => ({
+                  id: index + 1,
+                  name,
+                  output: "DP-1",
+                  active_window_id: index === 0 ? 7 : null,
+                })),
+              }
+            : "Handled";
+      if (typeof request === "object") actions = [...actions, request];
+      connection.end(JSON.stringify({ Ok: response }) + "\n");
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(niriSocket, resolve);
+  });
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const review = createReviewLauncher({
+    socketDirectory,
+    niriSocket,
+    available: async () => true,
+    send: async () => '{"status":"ready","neovidePid":70}',
+  });
+  t.after(() => review.dispose());
+  for (const [index, project] of projects.entries()) {
+    const workspace = join(directory, project);
+    await mkdir(join(workspace, "child", ".jj"), { recursive: true });
+    await mkdir(join(workspace, ".jj"));
+    const context = {
+      paseo: {
+        workspaces: {
+          ref: () => ({
+            refresh: async () => ({
+              workspaceDirectory: workspace,
+              name: "golden-otter",
+            }),
+          }),
+        },
+      },
+    } as unknown as PluginHandlerContext;
+    for (const repository of [undefined, "child"]) {
+      assert.deepEqual(await review.branch({ workspaceId: "test", repository }, context), {
+        launched: false,
+      });
+      assert.deepEqual(actions.slice(-2), [
+        {
+          Action: {
+            MoveWindowToWorkspace: { window_id: 7, reference: { Id: index + 2 }, focus: false },
+          },
+        },
+        { Action: { FocusWorkspace: { reference: { Id: index + 2 } } } },
+      ]);
+    }
+  }
 });
 
 test(

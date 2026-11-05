@@ -106,11 +106,12 @@ daemon launches run on that daemon's machine. The button is hidden on compact la
 mobile clients.
 
 When the daemon has `NIRI_SOCKET`, Review also creates or reuses a Niri workspace named after the
-Paseo workspace (for example, `golden-otter`), moves the managed Neovide window there, and switches
-to that workspace. New names use an empty unnamed workspace, preferring the Neovide window's
-monitor. Existing named workspaces are reused, and their other windows stay in place. Named
-workspaces remain after closing the editor. A placement error shows a warning after the diff opens;
-without Niri, the launcher simply opens the diff.
+workspace directory (for example, `jj-companion-paseo-golden-otter`), including the project prefix
+so projects with the same workspace nickname stay separate. It moves the managed Neovide window
+there and switches to that workspace. New names use an empty unnamed workspace, preferring the
+Neovide window's monitor. Existing named workspaces are reused, and their other windows stay in
+place. Named workspaces remain after closing the editor. A placement error shows a warning after the
+diff opens; without Niri, the launcher simply opens the diff.
 
 Editor sockets live in `$XDG_RUNTIME_DIR/paseo-jj-review`, with a private directory under the system
 temporary directory as a fallback. Existing directories must be owned by the current user and have

@@ -144,7 +144,7 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
       return stdout;
     });
 
-  async function open(workspace: string, repository: string, name: string) {
+  async function open(workspace: string, repository: string) {
     lifetime.signal.throwIfAborted();
     const socketDirectory = await directory();
     await ensureReviewDirectory(socketDirectory);
@@ -184,7 +184,12 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
           JSON.parse(await send(socket, reviewExpression(workspace, repository), lifetime.signal)),
         );
         if (result.status === "ready") {
-          const warning = await arrange(appId, name, result.neovidePid, lifetime.signal);
+          const warning = await arrange(
+            appId,
+            basename(workspace),
+            result.neovidePid,
+            lifetime.signal,
+          );
           return { launched, ...(warning ? { warning } : {}) };
         }
         if (result.status === "error") throw new Error(result.message);
@@ -199,12 +204,12 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
     }
   }
 
-  async function enqueue(workspace: string, repository: string, name = basename(workspace)) {
+  async function enqueue(workspace: string, repository: string) {
     const canonical = await realpath(workspace);
     const previous = queues.get(canonical) ?? Promise.resolve({ launched: false });
     const pending = previous
       .catch(() => {})
-      .then(() => open(canonical, repository, name))
+      .then(() => open(canonical, repository))
       .finally(() => {
         if (queues.get(canonical) === pending) queues.delete(canonical);
       });
@@ -224,7 +229,7 @@ export function createReviewLauncher(options: ReviewOptions = {}) {
       const root = await findJjRoot(directory);
       const selected = await resolveRepository(directory, repository);
       if (!root || !selected) throw new Error("This workspace is not in a jj repository.");
-      return enqueue(root, selected, workspace.name?.trim() || basename(root));
+      return enqueue(root, selected);
     },
     async dispose() {
       lifetime.abort();

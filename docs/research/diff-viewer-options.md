@@ -131,11 +131,13 @@ separate from successful RPC delivery and must be tested in the user's session. 
 CLI][n-neovide].
 
 For this desktop, the launcher now uses Niri IPC when `NIRI_SOCKET` is present. It creates or reuses
-a workspace named after the Paseo workspace, moves only the managed Neovide window, and switches to
-that workspace. It does not request individual window activation. New names use an empty unnamed
-workspace, preferring the window's current monitor; occupied workspaces are never intentionally
-renamed. Workspace IDs avoid ambiguous per-monitor indices. Placement is serialized and emptiness is
-rechecked before naming. Named workspaces persist after the editor closes.
+a workspace named after the canonical jj workspace directory's basename, including the project
+prefix (for example, `jj-companion-paseo-golden-otter`). This separates projects sharing a short
+workspace nickname. It moves only the managed Neovide window and switches to that workspace. It does
+not request individual window activation. New names use an empty unnamed workspace, preferring the
+window's current monitor; occupied workspaces are never intentionally renamed. Workspace IDs avoid
+ambiguous per-monitor indices. Placement is serialized and emptiness is rechecked before naming.
+Named workspaces persist after the editor closes.
 [Niri named workspaces](https://niri-wm.github.io/niri/Configuration%3A-Named-Workspaces.html),
 [Niri IPC actions](https://niri-wm.github.io/niri/niri_ipc/enum.Action.html).
 

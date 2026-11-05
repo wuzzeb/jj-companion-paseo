@@ -4,54 +4,141 @@ Research date: November 5, 2026.
 
 ## Recommendation
 
-For the first pass, build a small renderer owned by jj Companion, using JayJay's separation of
-comparison data and presentation as the model. Use Paseo's existing React Native primitives so the
-viewer fits its current plugin compiler and can render on desktop, web, and native clients. Keep the
-initial scope to a changed-file list, aligned before/after columns, collapsed unchanged regions,
-Show all, and reliable selection/copying. Treat accurate alignment and copying as acceptance
-requirements, not finishing touches.
+Start with a **Review branch in Neovide** action that preserves the existing leader binding:
+`DiffviewOpen 'fork_point(main|@)'`. Reuse a Neovim instance associated with the Paseo workspace;
+launch Neovide when none is available. This removes workspace hunting while retaining the user's
+existing diffview-plus workflow. Neovide is the confirmed launch frontend.
 
-JayJay's standalone `DiffPane` is the strongest alternative if a desktop/web-only implementation is
-acceptable. It is deliberately reusable and much smaller than a complete editor. However, importing
-its React component does **not** import its diff computation: a backend must supply already aligned,
-highlighted rows. Its optional WASM backend brings a separate build and distribution problem.
-Reusing the entire `ReviewWorkspace` would also bring review marks, notes, storage choices, and
-navigation that this plugin does not currently need.
+The eventual in-app viewer is **desktop/web-only**. Phone support is explicitly out of scope, so
+React Native rendering and native mobile compatibility should not determine the renderer choice.
+Prototype an existing web component before writing a new renderer. JayJay's standalone `DiffPane`
+and the additional `react-diff-view` candidate are the first components to compare. Keep Monaco as
+the richer editor option if search, selection, or folding requirements justify its integration.
 
-Choose Monaco if the intended destination is an editor-like review tool with incremental context
-expansion, search, language folding, and richer text interaction. Its published package and
-full-text input model are attractive, but its browser assets and workers are a larger fit problem
-for Paseo than a small native renderer.
+Prebuilding JayJay's CSS into JavaScript is feasible: the supplementary build probe flattened its
+styles and embedded its font successfully. This changes CSS from an unsupported direct import to an
+adapter we can own. It does not automatically solve its worker/WASM backend or host React
+compatibility. Importing `DiffPane` still requires aligned diff rows from a computation backend.
+Avoid adopting its entire review application just to get a file viewer.
 
-The recommendation is specific to the accepted first-pass scope: **read-only side-by-side review
-with Show all**. A large-file selection/copy prototype should precede committing to the owned
-renderer. If that fails, prefer an established viewer over accumulating editor behavior ourselves.
-No dependency was added or implementation selected by this report.
+An owned browser renderer remains an option if the existing components fail the interaction tests;
+it is no longer the default based on cross-platform concerns. Keep the first viewer read-only,
+side-by-side, and limited to file navigation, collapsed context, Show all, and reliable copying. Do
+not embed a Neovim GUI merely to obtain Diffview inside Paseo.
+
+This report specifies experiments; it does not add a launch button, dependencies, or editor
+configuration. The launcher can deliver value before implementing changed-file summaries or a web
+diff backend.
 
 ## Requirements and comparison
 
 The common case is the selected repository's `fork_point(main | @)` through `@`; a second action
-reviews one selected change. Both must respect the repository selector. The main viewing surface
-should be a workspace tab, with side-by-side as the default. The user accepts revealing the entire
-file rather than extending an individual context region incrementally in the first pass.
+reviews one selected change. Both must respect the repository selector. The eventual viewing surface
+should be a desktop/web workspace tab, with side-by-side as the default. No phone viewer is
+required. The user accepts revealing the entire file rather than extending an individual context
+region incrementally in the first pass.
 
-| Concern                     | Monaco                                                        | JayJay directly                                                    | Owned renderer inspired by JayJay                                   |
-| --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Side-by-side                | Built-in, resizable split                                     | Built-in equal-width columns; resizing the file column is separate | Implement aligned columns and shared vertical scrolling             |
-| Unchanged context           | Configurable hidden regions and reveal increments             | Collapsed context and file-wide Show all                           | Implement Show all over retained complete contents                  |
-| Language block folding      | Editor feature, language-dependent                            | No equivalent in the web diff pane                                 | Outside first-pass scope                                            |
-| Source supplied by backend  | Before/after text                                             | Rendered `DiffView`; optional engine consumes text                 | Text plus validated hunks or aligned rows                           |
-| Diff computation            | Included in editor                                            | Separate Rust/WASM engine or host implementation                   | Reuse jj output and an agreed parser, or a tested text-diff library |
-| Search and text interaction | Existing editor functionality                                 | Browser selection; no editor-style find API in `DiffPane`          | Copy fidelity needs explicit work; search can follow later          |
-| Plugin compilation          | CSS and worker adaptation                                     | CSS adaptation; more assets if using WASM                          | Existing JS bundle and React Native styles                          |
-| Native mobile client        | No native renderer; upstream does not support mobile browsers | DOM components need a web embedding surface                        | Can use the current native plugin renderer                          |
-| Dependency delivery         | Published npm package                                         | Unpublished source package, pinned artifact or source required     | Own source; any parser/diff library remains a dependency decision   |
-| Primary long-term cost      | Worker, model, theme, and host integration                    | Upstream updates, engine packaging, and host adapter               | Alignment, selection, accessibility, and performance                |
+| Concern                     | Monaco                                            | JayJay directly                                                    | Owned renderer inspired by JayJay                                   |
+| --------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Side-by-side                | Built-in, resizable split                         | Built-in equal-width columns; resizing the file column is separate | Implement aligned columns and shared vertical scrolling             |
+| Unchanged context           | Configurable hidden regions and reveal increments | Collapsed context and file-wide Show all                           | Implement Show all over retained complete contents                  |
+| Language block folding      | Editor feature, language-dependent                | No equivalent in the web diff pane                                 | Outside first-pass scope                                            |
+| Source supplied by backend  | Before/after text                                 | Rendered `DiffView`; optional engine consumes text                 | Text plus validated hunks or aligned rows                           |
+| Diff computation            | Included in editor                                | Separate Rust/WASM engine or host implementation                   | Reuse jj output and an agreed parser, or a tested text-diff library |
+| Search and text interaction | Existing editor functionality                     | Browser selection; no editor-style find API in `DiffPane`          | Copy fidelity needs explicit work; search can follow later          |
+| Plugin compilation          | CSS and worker adaptation                         | CSS adaptation; more assets if using WASM                          | Own browser JS and CSS adapter                                      |
+| Native mobile client        | Out of scope                                      | Out of scope                                                       | Out of scope                                                        |
+| Dependency delivery         | Published npm package                             | Unpublished source package, pinned artifact or source required     | Own source; any parser/diff library remains a dependency decision   |
+| Primary long-term cost      | Worker, model, theme, and host integration        | Upstream updates, engine packaging, and host adapter               | Alignment, selection, accessibility, and performance                |
 
 The Monaco capabilities above come from its [diff options][m-options], [editor API][m-api], and
 [README][m-readme]. JayJay behavior comes from its [component][j-pane], [styles][j-styles], and
 [backend contract][j-backend]. An owned renderer's capabilities are proposed work, not existing
 functionality.
+
+## First experiment with Neovide reuse
+
+### Match the existing branch command
+
+The branch action should pass `fork_point(main|@)` as **one literal argument**, plus the selected
+repository's `-C{path}` argument. Explicit `--adapter=jj` avoids accidentally choosing Git for a
+colocated checkout. The plugin exposes `require("diffview").open(args)`, allowing a Lua argument
+list rather than constructing an Ex command with nested quotes. This also avoids changing the
+editor's global cwd merely to review the nested repository. [Diffview Lua entry][d-open], [argument
+dispatch][d-lib], [jj adapter][d-adapter].
+
+The adapter resolves a bare revision as the left side and uses the working copy on the right. That
+is exactly the existing branch-review behavior. `main...@` also uses a live right side;
+`<base-id>..<head-id>` instead compares fixed endpoints. Preserve the user's current live workflow
+for the first launcher, rather than promising immutable content after handing control to an
+interactive editor. A future in-app review session should still use the pinned design below.
+[Diffview jj adapter][d-adapter].
+
+A bare selected change ID is **not** sufficient for a single-change action: it would compare that
+change against the current workspace. For a one-parent change, resolve parent and selected commit
+and send their endpoint range. For a merge, do not silently choose a parent; use jj's materialized
+merged-parent baseline and `DiffviewDiffDirs`, with copied temporary trees retained until the view
+closes, or defer that action until this lifecycle is implemented. The directory view is editable by
+default, so such a review integration must set buffers read-only deliberately. Start with the
+most-used branch action rather than allowing this less-common case to delay reuse. [Directory
+comparisons][d-doc], [jj adapter][d-adapter].
+
+### Identify a workspace editor rather than any running editor
+
+`--listen` establishes an RPC endpoint; `--server` chooses one; `--remote-send` sends keys; and
+`--remote-expr` evaluates an expression and returns a result. They do not supply a global mapping
+from workspace to editor. Neovim's CLI `--serverlist` is not supported. Automatic listen addresses
+on existing instances are useful, but must be discovered or registered. [Neovim remote
+API][n-remote].
+
+Use a small editor-side registration hook, or an explicit one-time registration command, to record
+`v:servername`, a canonical workspace path, and process identity in a per-user registry. Refresh
+registration when directory context changes and validate a record by RPC before use. This is needed
+to adopt an editor opened through the user's existing Snacks workflow, rather than only reusing
+instances launched by Paseo. Existing unregistered instances require that hook or bounded discovery;
+`--remote-send` alone will not find them automatically.
+
+Key reuse by the **canonical Paseo workspace directory**, not the shared jj repository, a change ID,
+or the workspace nickname. Sibling workspaces need separate editors even though they share `.jj`.
+The root and its selected child repository can share one editor by passing `-C` per review. Never
+repurpose an unrelated running editor just because it is the first reachable socket. If several
+editors are registered to the same workspace, prefer the previously chosen instance or require a
+selection rather than guessing from window titles.
+
+Use a private runtime directory and a short hash in socket filenames. Serialize launches per
+workspace. Check the recorded socket, validate its workspace identity, and dispatch if healthy.
+Otherwise spawn Neovide in the workspace with Neovim's `--listen <socket>` arguments passed after
+`--`, then wait with a bounded timeout for both RPC and diffview-plus readiness. A socket appearing
+is not proof that a lazy-loaded command is ready. Do not delete a live socket or launch a second
+window merely because an RPC times out.
+
+Prefer an acknowledged RPC/Lua call over simulating keystrokes. `--remote-send` can implement the
+user's idea, but insert mode, prompts, command-line input, and quoting complicate its reliability.
+`--remote-expr` can carry a fixed Lua expression and serialized argument data to call the module
+entry after plugin loading. Return a structured success or error; do not treat queued input as proof
+that the diff opened. The transport must not interpolate paths or revsets into shell code.
+
+### Launching and focusing are separate
+
+Neovide can start Neovim or attach to an existing server. `neovide --server <socket>` attaches a
+GUI; it does not mean “raise the already attached window.” Launch a new frontend only when needed,
+and track whether an attached UI is Neovide. Its command line supports workspace cwd and Linux
+window identifiers. A compositor-specific focus hook can use those identifiers, but focusing is
+separate from successful RPC delivery and must be tested in the user's session. [Neovide
+CLI][n-neovide].
+
+All launcher commands run on the Paseo daemon host. The initial experiment targets the user's local
+Linux desktop session with Neovide installed. Verify that the daemon inherits the display/session
+environment. Remote-host use needs an explicitly configured launch or forwarding strategy; a daemon
+launch does not open an application on the browser's machine. Closing the panel or reloading the
+plugin must not terminate an editor the user is working in.
+
+A scratch headless Neovim 0.12.6 probe verified an acknowledged `--remote-expr` round trip,
+cwd/server identity, and exact argument transport for `fork_point(main|@)` plus a path containing
+spaces and an apostrophe. It used a mocked `diffview.open`, not the user's running editor. No GUI
+was launched; actual plugin readiness, existing-instance registration, and Neovide window focus
+remain prototype tests. The installed diffview-plus source and current upstream adapter were
+inspected as well.
 
 ## Paseo integration constraints
 
@@ -92,6 +179,27 @@ A browser-worker implementation could prebuild and embed its worker and WASM byt
 client-side URLs. That needs lifecycle management and validation against the app's worker and
 content-security policies. It should not be described as a drop-in Vite build.
 
+### Prebuilding browser assets for Paseo
+
+The proposed approach is valid for CSS: run an asset prebuild before Paseo compiles the plugin.
+Flatten `@import` rules, embed required font URLs as data URLs, and emit a generated client module
+exporting the CSS string. On web, mount that scoped stylesheet once and remove it when its owner
+unloads. Keep host React external and render the component through Paseo's existing React tree;
+there is no need to ship a second React root merely to load styles.
+
+The supplementary probe built JayJay's full stylesheet with esbuild's `.woff2` data-URL loader:
+87,210 bytes of CSS became 87,680 bytes of generated JavaScript, or 41,184 bytes gzip. No `@import`
+remained and the font was embedded. This includes the full theme/font set; a standalone pane might
+need less. These figures prove build-time transformation, not mounted rendering or total bundle
+size.
+
+Use the manifest build hook to produce files under the allowed `client` tree. An evaluated plugin
+has no stable module URL for unresolved `import.meta.url` worker paths, so workers and WASM need a
+separate prebuild with explicit embedded bytes or hosted asset URLs. A lightweight worker around
+JayJay's exported render function is more focused than carrying its IndexedDB review backend.
+Monaco's worker build likewise needs its own initialization adapter. Prove web runtime policy and
+cleanup behavior; the script-disabled `DocumentFrame` remains unsuitable for either application.
+
 ## Monaco
 
 ### What we would reuse
@@ -125,15 +233,15 @@ distributable material beyond a selected application build; **it is not a predic
 memory footprint**. Monaco was not installed or bundled in these probes.
 
 Monaco's upstream README explicitly excludes mobile browser support. Even an eventual native WebView
-bridge would not turn it into a supported mobile editor. Its API is appropriate for
-desktop/web-first work. [README][m-readme].
+bridge would not turn it into a supported mobile editor. This is not a blocker for the agreed
+desktop/web-only scope. [README][m-readme].
 
 ### Fit for this plugin
 
 Monaco offers the most ready-made interaction and the simplest renderer input contract. It becomes
 the better choice if incremental expansion, editor search, keyboard navigation, or exact text
-selection grow beyond a small viewer's scope. It is less compelling while Show all is sufficient and
-the first release should work through Paseo's current native rendering path.
+selection grow beyond a small viewer's scope. Its integration must be compared with smaller web
+viewers now that desktop/web is the only target; mobile compatibility no longer counts against it.
 
 ## Using JayJay directly
 
@@ -223,6 +331,21 @@ application/shell has a different license. A dependency or copied-source decisio
 the exact files and notices involved; the app's badge is not the package's license declaration.
 [License overview][j-license].
 
+## Additional web candidate with react-diff-view
+
+`react-diff-view` deserves a prototype alongside JayJay now that native mobile rendering is out of
+scope. Its published package consumes parsed Git-format patches, supplies split rendering, and
+provides an optional single-side selection mode. Unlike JayJay's `DiffView`, this input can come
+directly from `jj diff --git` through its `parseDiff` wrapper. Context expansion still requires
+complete original text: its utilities insert unchanged lines into hunks; a short patch alone cannot
+reveal missing source. [Component documentation][r-guide].
+
+The npm metadata read November 5 reports `3.3.3`, MIT, React `>=16.14.0`, and six direct
+dependencies. It is not installed by this investigation. It needs the same scoped CSS prebuild
+experiment as JayJay, but no Rust/WASM pipeline for the basic patch view. Syntax/word highlighting,
+very large files, and selection performance need testing; its documentation warns that optimized
+selection has a cost on extremely large diffs. This is a candidate, not a measured winner.
+
 ## An owned renderer inspired by JayJay
 
 ### The useful boundary to keep
@@ -247,9 +370,9 @@ all changes display state over the same session, rather than silently updating t
 
 Keep one selected file mounted. A row has a left cell, a right cell, and optional unchanged-region
 metadata. A deleted block receives blank alignment space on the right; an inserted block receives it
-on the left. Native Text/View components can render this with a shared vertical container. Wrap
+on the left. An owned React DOM renderer can use grid rows inside a shared vertical container. Wrap
 policy, horizontal scrolling, copy behavior, and accessibility must be designed together.
-Virtualization is useful, but variable-height rows and native text selection require testing before
+Virtualization is useful, but variable-height rows and browser text selection require testing before
 choosing it.
 
 ### Scope we would actually own
@@ -267,8 +390,8 @@ Parser/library selection remains a dependency discussion.
 
 Taking only design inspiration creates no runtime dependency on JayJay. Copying selected React/CSS
 source instead creates an owned derivative: it preserves more upstream behavior but retains
-provenance and update work, and it remains DOM-based unless ported. Reusing `jj-diff` beneath an
-owned UI is a useful hybrid, but it is not full independence from JayJay's libraries.
+provenance and update work, and still requires CSS integration. Reusing `jj-diff` beneath an owned
+UI is a useful hybrid, but it is not full independence from JayJay's libraries.
 
 ### Why the smaller scope is credible and where it stops
 
@@ -342,33 +465,35 @@ checks, evaluator, or browser runtime.
 
 The JavaScript figures exclude React, CSS, fonts, WASM, workers, repository data, and our adapter.
 They are not end-to-end size or speed comparisons with Monaco. Esbuild was 0.28.2 and jj was 0.47.0.
-The runtime behavior of Monaco, desktop DOM mounting, native selection, and large Show all views
+The runtime behavior of Monaco, desktop DOM mounting, browser selection, and large Show all views
 remains to be measured; no speculative timing or memory figures are used here.
 
 ## Prototype and decision gates
 
-1. **Prove the common data contract.** In a disposable fixture, exercise branch, single-change, and
-   merge baselines; added/deleted/renamed and binary files; non-colocated and nested repositories;
-   and refresh while an agent rewrites `@`. Return one pinned file pair and validated change
-   metadata.
-2. **Prototype the owned viewer in the actual Paseo tab.** Render that file pair using native
-   components, side-by-side with Show all. Verify multiline single-side copying, long lines, mouse
-   selection, keyboard focus, resizing, and reopening the tab. Use ordinary and large files,
-   including a 10,000-line mostly unchanged file and a large insertion/deletion. Record file-switch
-   latency and responsiveness instead of assuming virtualization solves them.
-3. **Use the standalone JayJay pane as the comparison prototype if needed.** Guard it to web, prove
-   scoped CSS delivery, and feed the same fixture through a real computation adapter. Check the host
-   React version and line/copy fidelity. Do not add the full WASM review/storage stack just to make
-   the small component render.
-4. **Choose based on the actual failure.** Prefer the owned renderer if it meets the reading/copy
-   requirements with a small implementation. Prefer JayJay if its existing alignment/highlighting
-   outweighs source and engine maintenance. Prefer Monaco if the remaining problem is editor
-   interaction or incremental folding, provided its worker/assets path is proven in Paseo.
+1. **Deliver the branch launcher experiment first.** Add a desktop History action matching
+   `DiffviewOpen 'fork_point(main|@)'`, explicitly scoped to the selected jj repository. Adopt a
+   registered Neovim instance for the workspace; launch Neovide otherwise. Test double clicks, stale
+   records, startup readiness, paths with spaces, nested repositories, and root/sibling workspace
+   isolation. Verify focus independently of RPC success. This needs no web diff engine or
+   changed-file-summary RPC.
+2. **Handle the selected-change action accurately.** Use pinned endpoints for one-parent changes;
+   test merged-parent baselines and temporary-directory lifetime before claiming merge support. Keep
+   live external review and immutable in-app review distinct.
+3. **Prototype existing browser viewers in an actual Paseo tab.** Compare JayJay's standalone pane
+   with `react-diff-view`. Prove generated inline CSS, host React compatibility, text selection,
+   copying from one side, wrapped lines, Show all, resizing, and a 10,000-line file. Supply real jj
+   data and avoid the full review/storage application in this first comparison.
+4. **Choose the long-term renderer from those results.** Prefer the existing web component that
+   meets the interaction tests with the smallest stable adapter. Compare Monaco if richer editor
+   behavior matters. Build an owned browser renderer only if component constraints justify owning
+   alignment and selection. Native phone compatibility is not an acceptance criterion.
+5. **Retain an upstream path.** A public Paseo diff component or endpoint-based diff opener could
+   eventually replace the web adapter. Keep comparison sessions independent from presentation so
+   this remains possible without blocking the immediate Neovide improvement.
 
-Before implementation, the decisions that materially change the work are desktop-only versus native
-support, whether syntax/word highlighting is required initially, and which parser or diff engine may
-be added. No new repository, submodule, npm package, or Rust/WASM toolchain is necessary merely to
-finish this investigation.
+The first implementation decision is now editor registration and local GUI launch/focus, with
+Neovide confirmed. Renderer and parser dependencies can wait for the browser prototype. No editor
+configuration or live instance was changed during this report update.
 
 ## Sources and inspected revisions
 
@@ -436,3 +561,11 @@ The local reference checkouts were inspected at these commits, with permalink so
 [m-api]:
   https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IDiffEditor.html
 [jj-tools]: https://docs.jj-vcs.dev/latest/config/#external-diff-tools
+[d-open]: https://github.com/dlyongemallo/diffview-plus.nvim/blob/main/lua/diffview/init.lua
+[d-lib]: https://github.com/dlyongemallo/diffview-plus.nvim/blob/main/lua/diffview/lib.lua
+[d-adapter]:
+  https://github.com/dlyongemallo/diffview-plus.nvim/blob/main/lua/diffview/vcs/adapters/jj/init.lua
+[d-doc]: https://github.com/dlyongemallo/diffview-plus.nvim/blob/main/doc/diffview.txt
+[n-remote]: https://neovim.io/doc/user/remote.html
+[n-neovide]: https://neovide.dev/command-line-reference.html
+[r-guide]: https://github.com/otakustay/react-diff-view/blob/master/README.md

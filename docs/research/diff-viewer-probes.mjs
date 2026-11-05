@@ -68,6 +68,35 @@ for (const [name, contents] of cases) {
   }
 }
 
+// An explicit prebuild can flatten the stylesheet before Paseo sees the generated JS.
+const stylesheet = await esbuild.build({
+  entryPoints: [join(source, "styles.css")],
+  bundle: true,
+  write: false,
+  outfile: join(tmpdir(), "jj-review-prebuild.css"),
+  loader: { ".woff2": "dataurl" },
+  minify: true,
+  logLevel: "silent",
+});
+const css = stylesheet.outputFiles[0].text;
+const inlineStyles = await esbuild.transform(`export const css=${JSON.stringify(css)};`, {
+  format: "cjs",
+  minify: true,
+  target: "es2020",
+});
+assert.ok(!css.includes("@import"));
+assert.ok(css.includes("data:font/woff2") || css.includes("data:application/font-woff2"));
+console.log(
+  JSON.stringify({
+    name: "prebuilt inline JayJay CSS",
+    cssBytes: Buffer.byteLength(css),
+    generatedJavascriptBytes: Buffer.byteLength(inlineStyles.code),
+    gzipBytes: gzipSync(inlineStyles.code).length,
+    unresolvedImports: false,
+    fontEmbedded: true,
+  }),
+);
+
 const temporary = mkdtempSync(join(tmpdir(), "jj-diff-research-"));
 try {
   const repo = join(temporary, "repo");

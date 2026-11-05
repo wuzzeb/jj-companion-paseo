@@ -13,6 +13,7 @@ export function ChangeRow({
   theme,
   hostId,
   workspaceId,
+  repository,
   disabled,
   onSelect,
   onMove,
@@ -23,6 +24,7 @@ export function ChangeRow({
   theme: PluginTheme;
   hostId: string;
   workspaceId: string;
+  readonly repository: string;
   disabled: boolean;
   onSelect(): void;
   onMove(bookmark: Bookmark, target: Change): void;
@@ -41,13 +43,14 @@ export function ChangeRow({
           !disabled &&
           drag.hostId === hostId &&
           drag.workspaceId === workspaceId &&
+          drag.repository === repository &&
           drag.bookmark?.remote === null
         )
           onMove(drag.bookmark, change);
       },
       setHovered,
     );
-  }, [change, disabled, hostId, workspaceId, onMove]);
+  }, [change, disabled, hostId, workspaceId, repository, onMove]);
   const summary =
     change.description.split("\n")[0] ||
     (change.parents.length === 0 ? "root()" : "(no description)");

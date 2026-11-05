@@ -9,13 +9,17 @@ import {
   bookmarkStateRpc,
   type BookmarkOperation,
 } from "../shared/bookmarks.js";
-import { findJjRoot } from "./repository.js";
+import { resolveRepository } from "./repository.js";
 import { readBookmarkState, runBookmarkAction } from "./bookmarks.js";
 
-async function workspaceRoot(workspaceId: string, { paseo }: PluginHandlerContext) {
+async function workspaceRoot(
+  workspaceId: string,
+  { paseo }: PluginHandlerContext,
+  repository?: string,
+) {
   const workspace = await paseo.workspaces.ref(workspaceId).refresh();
   if (!workspace || workspace.archivingAt) throw new Error("Workspace is unavailable.");
-  return findJjRoot(await realpath(workspace.workspaceDirectory));
+  return resolveRepository(workspace.workspaceDirectory, repository);
 }
 
 async function repositoryKey(root: string) {
@@ -32,16 +36,19 @@ export function createBookmarkOperations() {
   const queues = new Map<string, Promise<void>>();
   const operations = new Map<string, { workspaceId: string; operation: BookmarkOperation }>();
   return {
-    async state({ workspaceId }: RpcInput<typeof bookmarkStateRpc>, context: PluginHandlerContext) {
-      const root = await workspaceRoot(workspaceId, context);
+    async state(
+      { workspaceId, repository }: RpcInput<typeof bookmarkStateRpc>,
+      context: PluginHandlerContext,
+    ) {
+      const root = await workspaceRoot(workspaceId, context, repository);
       return root ? readBookmarkState(root, lifetime.signal) : null;
     },
     async start(
-      { workspaceId, action }: RpcInput<typeof bookmarkActionRpc>,
+      { workspaceId, repository, action }: RpcInput<typeof bookmarkActionRpc>,
       context: PluginHandlerContext,
     ) {
       lifetime.signal.throwIfAborted();
-      const root = await workspaceRoot(workspaceId, context);
+      const root = await workspaceRoot(workspaceId, context, repository);
       if (!root) throw new Error("This workspace is not in a jj repository.");
       const key = await repositoryKey(root);
       for (const [id, entry] of operations) {
@@ -58,7 +65,7 @@ export function createBookmarkOperations() {
         .then(async () => {
           try {
             lifetime.signal.throwIfAborted();
-            const currentRoot = await workspaceRoot(workspaceId, context);
+            const currentRoot = await workspaceRoot(workspaceId, context, repository);
             if (currentRoot !== root || (await repositoryKey(currentRoot)) !== key)
               throw new Error(
                 "The workspace repository changed while this operation was queued. Refresh and try again.",

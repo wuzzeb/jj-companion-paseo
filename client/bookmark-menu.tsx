@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { Bookmark } from "../shared/bookmarks.js";
-import { bindBookmarkMenu } from "./web.js";
+import { bindMenu } from "./web.js";
 
 export interface BookmarkMenuTarget {
   bookmark: Bookmark;
@@ -28,7 +28,7 @@ export function BookmarkMenu({
 }) {
   const ref = useRef<View>(null);
   const [activeRemote, setActiveRemote] = useState<string | null>(null);
-  useEffect(() => bindBookmarkMenu(ref.current, target.trigger, close), [target, close]);
+  useEffect(() => bindMenu(ref.current, target.trigger, close), [target, close]);
   const width = Math.min(240, Math.max(0, target.bounds.width - 16));
   const height = 36 + Math.max(remotes.length, 1) * 36 + (target.bookmark.conflict ? 42 : 0);
   const left = Math.max(8, Math.min(target.anchor.x, target.bounds.width - width - 8));

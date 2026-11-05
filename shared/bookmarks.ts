@@ -1,5 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
+import { repositoryInput } from "./repositories.js";
 
 export const revisionSchema = z.object({
   commitId: z.string().regex(/^[0-9a-f]{40,64}$/),
@@ -67,12 +68,16 @@ export const operationSchema = z.object({
 export type BookmarkOperation = z.infer<typeof operationSchema>;
 export const bookmarkStateRpc = defineRpc({
   name: "bookmarks.state",
-  input: z.object({ workspaceId: z.string().min(1) }),
+  input: z.object({ workspaceId: z.string().min(1), ...repositoryInput }),
   output: bookmarkStateSchema.nullable(),
 });
 export const bookmarkActionRpc = defineRpc({
   name: "bookmarks.start",
-  input: z.object({ workspaceId: z.string().min(1), action: bookmarkActionSchema }),
+  input: z.object({
+    workspaceId: z.string().min(1),
+    ...repositoryInput,
+    action: bookmarkActionSchema,
+  }),
   output: operationSchema,
 });
 export const bookmarkOperationRpc = defineRpc({

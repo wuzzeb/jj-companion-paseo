@@ -493,3 +493,50 @@ test("Create & Push requires a remote before creating a local bookmark", async (
     false,
   );
 });
+
+test("bookmark RPCs read and update only the selected child repository", async (t) => {
+  const { repo } = await repository(t);
+  const child = join(repo, "child");
+  await mkdir(child);
+  await jj(child, "git", "init", "--no-colocate");
+  await jj(child, "describe", "-m", "child change");
+  const service = createBookmarkOperations();
+  t.after(() => service.dispose());
+  const context = {
+    paseo: { workspaces: { ref: () => ({ refresh: async () => ({ workspaceDirectory: repo }) }) } },
+  } as unknown as PluginHandlerContext;
+  const state = await service.state({ workspaceId: "test", repository: "child" }, context);
+  assert.ok(state);
+  const root = await service.state({ workspaceId: "test" }, context);
+  assert.notEqual(state.workingCopy.changeId, root?.workingCopy.changeId);
+  const started = await service.start(
+    {
+      workspaceId: "test",
+      repository: "child",
+      action: { kind: "create", name: "child-only", target: workspace(state), publish: false },
+    },
+    context,
+  );
+  let result = service.operation({ workspaceId: "test", operationId: started.id });
+  for (let count = 0; ["queued", "running"].includes(result.status) && count < 100; count++) {
+    await delay(20);
+    result = service.operation({ workspaceId: "test", operationId: started.id });
+  }
+  assert.equal(result.status, "succeeded", result.message);
+  assert.ok(local(await readBookmarkState(child), "child-only"));
+  assert.equal(
+    (await readBookmarkState(repo)).bookmarks.some((bookmark) => bookmark.name === "child-only"),
+    false,
+  );
+  await assert.rejects(
+    service.state({ workspaceId: "test", repository: "missing" }, context),
+    /Repository is unavailable/,
+  );
+  await assert.rejects(
+    service.start(
+      { workspaceId: "test", repository: "missing", action: { kind: "fetch", remote: "origin" } },
+      context,
+    ),
+    /Repository is unavailable/,
+  );
+});

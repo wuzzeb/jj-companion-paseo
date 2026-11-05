@@ -8,6 +8,7 @@ export function BookmarkChip({
   bookmark,
   hostId,
   workspaceId,
+  repository,
   theme,
   disabled,
   onOpen,
@@ -15,6 +16,7 @@ export function BookmarkChip({
   bookmark: Bookmark;
   hostId: string;
   workspaceId: string;
+  readonly repository: string;
   theme: PluginTheme;
   disabled: boolean;
   onOpen(bookmark: Bookmark, anchor: View | null): void;
@@ -30,7 +32,7 @@ export function BookmarkChip({
     if (disabled || bookmark.remote !== null) return;
     return bindBookmark(
       ref.current,
-      { hostId, workspaceId, bookmark },
+      { hostId, workspaceId, repository, bookmark },
       () => {
         if (!dragging.current && Date.now() >= suppressClickUntil.current)
           onOpen(bookmark, ref.current);
@@ -40,7 +42,7 @@ export function BookmarkChip({
         dragging.current = value;
       },
     );
-  }, [bookmark, disabled, hostId, workspaceId, onOpen]);
+  }, [bookmark, disabled, hostId, workspaceId, repository, onOpen]);
   const label = `${bookmark.name}${bookmark.remote ? `@${bookmark.remote}` : ""}${bookmark.conflict ? "??" : ""}`;
   const style = {
     backgroundColor: theme.colors.surface1,

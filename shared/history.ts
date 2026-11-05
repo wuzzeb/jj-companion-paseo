@@ -1,5 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
+import { repositoryInput } from "./repositories.js";
 
 export const historyLimit = 200;
 export const maxHistoryLimit = 1000;
@@ -35,6 +36,7 @@ export const historyRpc = defineRpc({
   name: "history.list",
   input: z.object({
     workspaceId: z.string().min(1),
+    ...repositoryInput,
     limit: z.number().int().min(1).max(maxHistoryLimit).default(historyLimit),
   }),
   output: historySchema,

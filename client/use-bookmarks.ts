@@ -9,7 +9,13 @@ import {
   type BookmarkAction,
 } from "../shared/bookmarks.js";
 
-export function useBookmarks(workspaceId: string, hostId: string, directory: string | null) {
+export function useBookmarks(
+  workspaceId: string,
+  hostId: string,
+  directory: string | null,
+  repository: string,
+  enabled: boolean,
+) {
   const stateRpc = useRpc(bookmarkStateRpc);
   const startRpc = useRpc(bookmarkActionRpc);
   const operationRpc = useRpc(bookmarkOperationRpc);
@@ -18,9 +24,10 @@ export function useBookmarks(workspaceId: string, hostId: string, directory: str
   const [operationId, setOperationId] = useState<string | null>(null);
   const handled = useRef<string | null>(null);
   const state = useQuery({
-    queryKey: ["jj-bookmarks", hostId, workspaceId, directory],
-    queryFn: () => stateRpc({ workspaceId }),
+    queryKey: ["jj-bookmarks", hostId, workspaceId, directory, repository],
+    queryFn: () => stateRpc({ workspaceId, repository }),
     refetchInterval: 10_000,
+    enabled,
     retry: false,
   });
   const operation = useQuery({
@@ -32,7 +39,7 @@ export function useBookmarks(workspaceId: string, hostId: string, directory: str
     retry: false,
   });
   const start = useMutation({
-    mutationFn: (action: BookmarkAction) => startRpc({ workspaceId, action }),
+    mutationFn: (action: BookmarkAction) => startRpc({ workspaceId, repository, action }),
     onSuccess: (result) => setOperationId(result.id),
     onError: (error) => toast.error(error.message),
     retry: false,

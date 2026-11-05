@@ -65,16 +65,23 @@ the Explorer’s **+** menu, or search for **Open jj history** in the Command Ce
 moved into a regular workspace pane. The Explorer uses the same tabs and **+** menu on phones,
 tablets, and desktop.
 
+If the jj root has immediate child directories containing their own `.jj` directory, a repository
+selector appears directly after **History**. It lists the root first, followed by the child
+repositories by directory name, including ignored checkouts and separately created jj workspaces.
+Discovery goes one level deep and skips directory symlinks. The graph, change details, bookmarks,
+Fetch, and Push all follow the selected repository. Refresh rescans the available repositories; a
+missing selection falls back to the root.
+
 The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
 conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
 Selection follows a rewritten change when its change ID remains unambiguous. History starts with the
 latest 200 visible revisions across all branches; **Load older changes** expands it up to 1,000
 revisions. Connections to history outside the loaded rows end in faded stubs.
 
-Each history tab remembers its selected change and loaded history depth across app reloads using
-Paseo's persisted tab state. Invalid saved state falls back to the latest 200 changes and automatic
-selection. Only change and commit IDs are saved for the selection; details come from refreshed
-history.
+Each history tab remembers its repository, selected change, and loaded history depth across app
+reloads using Paseo's persisted tab state. Invalid saved state falls back to the latest 200 changes
+and automatic selection. Switching repositories resets the selected change and history depth. Only
+change and commit IDs are saved for the selection; details come from refreshed history.
 
 History refreshes every 10 seconds while the app is active, and the refresh button reloads it
 immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata

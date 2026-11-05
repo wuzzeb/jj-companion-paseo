@@ -120,3 +120,34 @@ test("ordinary directories and Git-only repositories have an explicit empty stat
   await execFileAsync("git", ["init", directory]);
   assert.deepEqual(await readHistory(directory, 200), { status: "not_jj" });
 });
+
+test("history selects a separate child repository and a nested jj workspace", async (t) => {
+  const { repo, directory } = await repository(t);
+  await jj(repo, "describe", "-m", "parent history");
+  const child = join(repo, "child");
+  await mkdir(child);
+  await jj(child, "git", "init", "--no-colocate");
+  await jj(child, "describe", "-m", "child history");
+  const source = join(directory, "source");
+  await mkdir(source);
+  await jj(source, "git", "init", "--no-colocate");
+  const nestedWorkspace = join(repo, "nested-workspace");
+  await jj(source, "workspace", "add", "--name", "nested", nestedWorkspace);
+  await jj(nestedWorkspace, "describe", "-m", "nested workspace history");
+  for (const [selection, description] of [
+    [".", "parent history"],
+    ["child", "child history"],
+    ["nested-workspace", "nested workspace history"],
+  ]) {
+    const result = await readHistory(repo, 200, selection);
+    assert.equal(result.status, "ready");
+    if (result.status !== "ready") return;
+    assert.equal(
+      result.changes.find((change) => change.isWorkingCopy)?.description.trim(),
+      description,
+    );
+    assert.equal(result.root, selection === "." ? repo : join(repo, selection));
+  }
+  await rm(child, { recursive: true });
+  await assert.rejects(readHistory(repo, 200, "child"), /Repository is unavailable/);
+});

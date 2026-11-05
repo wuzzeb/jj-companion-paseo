@@ -23,6 +23,7 @@ const mime = "application/x-paseo-jj-bookmark";
 export interface BookmarkDrag {
   hostId: string;
   workspaceId: string;
+  readonly repository: string;
   bookmark: Bookmark;
 }
 
@@ -51,7 +52,7 @@ interface MenuElement {
   };
 }
 
-export function bindBookmarkMenu(node: unknown, trigger: unknown, close: () => void) {
+export function bindMenu(node: unknown, trigger: unknown, close: () => void) {
   if (Platform.OS !== "web" || !node) return () => {};
   const menu = node as MenuElement;
   const anchor = trigger as MenuElement;

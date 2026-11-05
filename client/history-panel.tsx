@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View, Platform, StyleSheet } from "react-native";
 import { z } from "zod";
@@ -9,6 +9,8 @@ import {
   type PluginWorkspacePanelProps,
 } from "@getpaseo/plugin/client";
 import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
+import { repositoriesRpc, repositorySelectionSchema } from "../shared/repositories.js";
+import { RepositoryPicker } from "./repository-picker.js";
 import { historyLimit, historyRpc, maxHistoryLimit } from "../shared/history.js";
 import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
@@ -22,6 +24,7 @@ import type { Bookmark, BookmarkTarget } from "../shared/bookmarks.js";
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
 const historyTabStateSchema = z
   .object({
+    repository: repositorySelectionSchema.default("."),
     limit: z.number().int().min(historyLimit).max(maxHistoryLimit),
     selection: z
       .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
@@ -55,22 +58,91 @@ function History({
   readonly workspaceName: string;
 }) {
   const [tabState, setTabState] = useTabState(tab, historyTabStateSchema, {
+    repository: ".",
     limit: historyLimit,
     selection: null,
   });
-  const { limit, selection } = tabState;
+  const listRepositories = useRpc(repositoriesRpc);
+  const repositories = useQuery({
+    queryKey: ["jj-repositories", host.id, workspaceId, directory],
+    queryFn: () => listRepositories({ workspaceId }),
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  const repository = repositories.data?.some((entry) => entry.id === tabState.repository)
+    ? tabState.repository
+    : ".";
+  const state =
+    repository === tabState.repository
+      ? tabState
+      : { repository, limit: historyLimit, selection: null };
+  return (
+    <RepositoryHistory
+      key={repository}
+      theme={theme}
+      host={host}
+      workspaceId={workspaceId}
+      directory={directory}
+      workspaceName={workspaceName}
+      tabState={state}
+      setTabState={setTabState}
+      enabled={repositories.isSuccess}
+      repositoryError={repositories.error}
+      refreshRepositories={() => {
+        void repositories.refetch();
+      }}
+      repositoryPicker={
+        repositories.data && repositories.data.length > 1 ? (
+          <RepositoryPicker
+            repositories={repositories.data}
+            value={repository}
+            theme={theme}
+            onSelect={(repository) =>
+              setTabState({ repository, limit: historyLimit, selection: null })
+            }
+          />
+        ) : null
+      }
+    />
+  );
+}
+
+function RepositoryHistory({
+  theme,
+  host,
+  workspaceId,
+  directory,
+  workspaceName,
+  tabState,
+  setTabState,
+  enabled,
+  repositoryError,
+  refreshRepositories,
+  repositoryPicker,
+}: Pick<PluginWorkspacePanelProps, "theme" | "host" | "workspaceId"> & {
+  readonly directory: string | null;
+  readonly workspaceName: string;
+  readonly tabState: z.infer<typeof historyTabStateSchema>;
+  readonly enabled: boolean;
+  readonly repositoryError: Error | null;
+  readonly repositoryPicker: ReactNode;
+  setTabState(state: z.infer<typeof historyTabStateSchema>): void;
+  refreshRepositories(): void;
+}) {
+  const { limit, selection, repository } = tabState;
   const [width, setWidth] = useState(320);
   const panelRef = useRef<View>(null);
   const [menu, setMenu] = useState<BookmarkMenuTarget | null>(null);
   const [createTarget, setCreateTarget] = useState<BookmarkTarget | null>(null);
-  const bookmarks = useBookmarks(workspaceId, host.id, directory);
+  const bookmarks = useBookmarks(workspaceId, host.id, directory, repository, enabled);
   const listHistory = useRpc(historyRpc);
   const query = useQuery({
-    queryKey: ["jj-history", host.id, workspaceId, directory, limit],
-    queryFn: () => listHistory({ workspaceId, limit }),
+    queryKey: ["jj-history", host.id, workspaceId, directory, repository, limit],
+    queryFn: () => listHistory({ workspaceId, limit, repository }),
     refetchInterval: 10_000,
     retry: false,
     placeholderData: keepPreviousData,
+    enabled,
   });
   const history = query.data?.status === "ready" ? query.data : null;
   const changes = history?.changes;
@@ -98,8 +170,11 @@ function History({
   }, [bookmarks.state.data]);
   const styles = useMemo(() => createStyles(theme), [theme]);
   const refresh = () => {
-    void query.refetch();
-    void bookmarks.state.refetch();
+    refreshRepositories();
+    if (enabled) {
+      void query.refetch();
+      void bookmarks.state.refetch();
+    }
   };
   const openBookmark = (bookmark: Bookmark, trigger: View | null) => {
     if (bookmarks.busy || bookmark.remote !== null || !trigger) return;
@@ -127,7 +202,8 @@ function History({
     >
       <View style={styles.toolbar}>
         <Icon name="GitGraph" size={15} color={theme.colors.foregroundMuted} />
-        <Text style={styles.title}>History</Text>
+        <Text style={[styles.title, repositoryPicker ? { flex: 0 } : null]}>History</Text>
+        {repositoryPicker}
         <Pressable
           onPress={refresh}
           disabled={query.isFetching}
@@ -155,16 +231,18 @@ function History({
         />
       ) : null}
 
-      {query.error ? (
+      {query.error || repositoryError ? (
         <View style={styles.message} accessibilityRole="alert">
           <Text style={styles.error}>Couldn’t load jj history</Text>
-          <Text style={styles.muted}>{query.error.message}</Text>
+          <Text style={styles.muted}>{(query.error ?? repositoryError)?.message}</Text>
           <Pressable onPress={refresh} accessibilityRole="button" style={styles.retry}>
             <Text style={styles.accent}>Retry</Text>
           </Pressable>
         </View>
       ) : null}
-      {query.isPending ? <Text style={styles.messageText}>Loading history…</Text> : null}
+      {query.isPending && !repositoryError ? (
+        <Text style={styles.messageText}>Loading history…</Text>
+      ) : null}
       {query.data?.status === "not_jj" ? (
         <View style={styles.empty}>
           <Icon name="GitGraph" size={28} color={theme.colors.foregroundMuted} />
@@ -205,6 +283,7 @@ function History({
                     theme={theme}
                     hostId={host.id}
                     workspaceId={workspaceId}
+                    repository={repository}
                     disabled={bookmarks.busy}
                     onSelect={() =>
                       setTabState({
@@ -246,6 +325,7 @@ function History({
                             bookmark={bookmark}
                             hostId={host.id}
                             workspaceId={workspaceId}
+                            repository={repository}
                             theme={theme}
                             disabled={bookmarks.busy}
                             onOpen={openBookmark}
@@ -375,6 +455,7 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       height: 42,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      zIndex: 1,
     },
     title: { flex: 1, color: colors.foreground, fontSize: 12, fontWeight: "500" },
     muted: { color: colors.foregroundMuted, fontSize: 11, lineHeight: 17 },

@@ -1,8 +1,7 @@
-import { realpath } from "node:fs/promises";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { RpcInput } from "@getpaseo/plugin";
 import { historyRpc, historySchema } from "../shared/history.js";
-import { findJjRoot } from "./repository.js";
+import { resolveRepository } from "./repository.js";
 import { jsonLines, runJj } from "./jj.js";
 
 const template = `json({
@@ -20,8 +19,8 @@ const template = `json({
   "hasConflict" => conflict
 }) ++ "\\n"`;
 
-export async function readHistory(cwd: string, limit: number) {
-  const root = await findJjRoot(await realpath(cwd));
+export async function readHistory(cwd: string, limit: number, repository = ".") {
+  const root = await resolveRepository(cwd, repository);
   if (!root) return historySchema.parse({ status: "not_jj" });
 
   // Pin the operation so observation neither snapshots files nor merges concurrent operations.
@@ -45,10 +44,10 @@ export async function readHistory(cwd: string, limit: number) {
 }
 
 export async function listHistory(
-  { workspaceId, limit }: RpcInput<typeof historyRpc>,
+  { workspaceId, limit, repository }: RpcInput<typeof historyRpc>,
   { paseo }: PluginHandlerContext,
 ) {
   const workspace = await paseo.workspaces.ref(workspaceId).refresh();
   if (!workspace) throw new Error("Workspace is unavailable.");
-  return readHistory(workspace.workspaceDirectory, limit);
+  return readHistory(workspace.workspaceDirectory, limit, repository);
 }

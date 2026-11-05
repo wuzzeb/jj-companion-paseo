@@ -2,7 +2,7 @@ import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { RpcInput } from "@getpaseo/plugin";
 import { historyRpc, historySchema } from "../shared/history.js";
 import { resolveRepository } from "./repository.js";
-import { jsonLines, runJj } from "./jj.js";
+import { runJj } from "./jj.js";
 
 const template = `json({
   "commitId" => commit_id,
@@ -26,7 +26,11 @@ export async function readHistory(cwd: string, limit: number, repository = ".") 
   // Pin the operation so observation neither snapshots files nor merges concurrent operations.
   const stdout = await runJj(root, [
     "log",
-    "--no-graph",
+    // Flat log output bypasses jj's stack grouping and working-copy priority.
+    '--config=ui.graph.style="ascii"',
+    "--config=templates.log_node='\"\"'",
+    "--config=ui.log-word-wrap=false",
+    '--config=revsets.log-graph-prioritize="present(@)"',
     "-r",
     "all()",
     "-n",
@@ -34,7 +38,12 @@ export async function readHistory(cwd: string, limit: number, repository = ".") 
     "-T",
     template,
   ]);
-  const changes = jsonLines(stdout);
+  // JSON strings escape embedded newlines, so each object occupies one graph row.
+  // Discard graph-only connector rows and strip the ASCII prefix from data rows.
+  const changes: ReadonlyArray<unknown> = stdout.split("\n").flatMap((line) => {
+    const start = line.indexOf("{");
+    return start < 0 ? [] : [JSON.parse(line.slice(start)) as unknown];
+  });
   return historySchema.parse({
     status: "ready",
     root,

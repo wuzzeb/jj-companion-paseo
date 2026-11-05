@@ -151,3 +151,81 @@ test("history selects a separate child repository and a nested jj workspace", as
   await rm(child, { recursive: true });
   await assert.rejects(readHistory(repo, 200, "child"), /Repository is unavailable/);
 });
+
+test("interleaved agent stacks stay together with the older current branch first, before pagination", async (t) => {
+  const { repo } = await repository(t);
+  await jj(repo, "describe", "-m", "main");
+  await jj(repo, "bookmark", "create", "main");
+  const id = () =>
+    jj(repo, "--ignore-working-copy", "log", "--no-graph", "-r", "@", "-T", "commit_id");
+  const main = await id();
+  let left = main;
+  let right = main;
+  for (let depth = 1; depth <= 3; depth++) {
+    await jj(repo, "new", left, "-m", `left-${depth}`);
+    left = await id();
+    await jj(repo, "new", right, "-m", `right-${depth}`);
+    right = await id();
+  }
+  await jj(repo, "edit", left);
+  const full = await readHistory(repo, 200);
+  assert.equal(full.status, "ready");
+  if (full.status !== "ready") return;
+  assert.deepEqual(
+    full.changes.map((change) => change.description.trim()),
+    ["left-3", "left-2", "left-1", "right-3", "right-2", "right-1", "main", ""],
+  );
+  assert.equal(full.changes[0].isWorkingCopy, true);
+  for (const limit of [2, 4, full.changes.length]) {
+    const page = await readHistory(repo, limit);
+    assert.equal(page.status, "ready");
+    if (page.status !== "ready") return;
+    assert.deepEqual(page.changes, full.changes.slice(0, limit));
+    assert.equal(page.hasMore, limit < full.changes.length);
+  }
+});
+
+test("merges and a non-head working copy keep children above parents without losing JSON data", async (t) => {
+  const { repo } = await repository(t);
+  const base = await jj(
+    repo,
+    "--ignore-working-copy",
+    "log",
+    "--no-graph",
+    "-r",
+    "@",
+    "-T",
+    "commit_id",
+  );
+  const description =
+    'JSON { braces }, graph | / \\ symbols, "quotes"\n\n' + "Long description ".repeat(100);
+  await jj(repo, "new", base, "-m", description);
+  const left = await jj(
+    repo,
+    "--ignore-working-copy",
+    "log",
+    "--no-graph",
+    "-r",
+    "@",
+    "-T",
+    "commit_id",
+  );
+  await jj(repo, "new", base, "-m", "right");
+  await jj(repo, "new", left, "@", "-m", "merge");
+  await jj(repo, "edit", left);
+  const result = await readHistory(repo, 200);
+  assert.equal(result.status, "ready");
+  if (result.status !== "ready") return;
+  assert.equal(result.changes[0].description.trim(), "merge");
+  assert.equal(
+    result.changes.find((change) => change.commitId === left)?.description.trim(),
+    description.trim(),
+  );
+  const positions: ReadonlyMap<string, number> = new Map(
+    result.changes.map((change, index) => [change.commitId, index]),
+  );
+  assert.equal(positions.size, result.changes.length);
+  for (const [index, change] of result.changes.entries())
+    for (const parent of change.parents)
+      assert.ok(positions.get(parent)! > index, "every parent follows all its children");
+});

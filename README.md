@@ -74,13 +74,15 @@ missing selection falls back to the root.
 
 The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
 conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
-Selection follows a rewritten change when its change ID remains unambiguous. History starts with the
-latest 200 visible revisions across all branches; **Load older changes** expands it up to 1,000
-revisions. Connections to history outside the loaded rows end in faded stubs.
+Selection follows a rewritten change when its change ID remains unambiguous. History keeps each
+branch's stack together, with the current workspace's stack first, using jj's graph ordering.
+Children always appear before their parents, including at forks and merges. The initial view shows
+200 revisions across all branches; **Load older changes** expands it up to 1,000 revisions in the
+same order. Connections to history outside the loaded rows end in faded stubs.
 
 Each history tab remembers its repository, selected change, and loaded history depth across app
-reloads using Paseo's persisted tab state. Invalid saved state falls back to the latest 200 changes
-and automatic selection. Switching repositories resets the selected change and history depth. Only
+reloads using Paseo's persisted tab state. Invalid saved state falls back to 200 changes and
+automatic selection. Switching repositories resets the selected change and history depth. Only
 change and commit IDs are saved for the selection; details come from refreshed history.
 
 History refreshes every 10 seconds while the app is active, and the refresh button reloads it

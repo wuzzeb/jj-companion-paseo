@@ -377,7 +377,7 @@ function RepositoryHistory({
                   >
                     <Text style={limit >= maxHistoryLimit ? styles.muted : styles.accent}>
                       {limit >= maxHistoryLimit
-                        ? `Showing the latest ${maxHistoryLimit} changes`
+                        ? `Showing ${maxHistoryLimit} changes`
                         : "Load older changes"}
                     </Text>
                   </Pressable>

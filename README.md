@@ -88,7 +88,24 @@ change and commit IDs are saved for the selection; details come from refreshed h
 History refreshes every 10 seconds while the app is active, and the refresh button reloads it
 immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata
 therefore reflects the latest jj snapshot, rather than unsnapshotted edits on disk. Git-only
-repositories and ordinary directories show an empty state. Diff viewing is a future addition.
+repositories and ordinary directories show an empty state.
+
+On the experimental `jayjay-review-tab` branch, use **Open jj review** in Paseo's command center to
+open a **jj Review** workspace tab on desktop/web. It compares `fork_point(main|@)` with `@`, with a
+repository selector, changed-file list, and JayJay's side-by-side `DiffPane`. Click a collapsed
+context row or **Show all** to reveal the complete file; **Collapse context** hides unchanged
+regions again. Mouse selections copy one column without line numbers.
+
+Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and commit
+endpoints. Browsing files and revealing context keep that snapshot, so agent changes appear only
+after Refresh. This prototype shows plain text without syntax or word highlighting. Binary files and
+path/permission-only changes show notices; individual-change review, comments, and review marks are
+not included. Files are limited to 20,000 diff lines and jj's 16 MiB output limit.
+
+The small JayJay source subset is vendored under `client/vendor/jayjay` with its Apache-2.0 license
+and pinned revision. Styles are embedded in JavaScript; no package installation, worker, WASM build,
+or nested checkout is required to load this branch. `tools/vendor-jayjay.mjs` regenerates the subset
+from a separate JayJay jj checkout when updating it.
 
 The history toolbar provides **Create bookmark**, **Tug**, **Push**, and **Fetch**. These shortcuts
 act on the workspace’s edited change (`@`), independently of the selected graph row. If `@` is empty

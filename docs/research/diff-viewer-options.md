@@ -26,9 +26,48 @@ it is no longer the default based on cross-platform concerns. Keep the first vie
 side-by-side, and limited to file navigation, collapsed context, Show all, and reliable copying. Do
 not embed a Neovim GUI merely to obtain Diffview inside Paseo.
 
-This report specifies experiments; it does not add a launch button, dependencies, or editor
-configuration. The launcher can deliver value before implementing changed-file summaries or a web
-diff backend.
+The separate `jayjay-review-tab` experiment now implements the standalone-pane approach described
+below. The Neovide launcher remains separate from this branch.
+
+## Workspace-tab prototype
+
+Open **jj Review** with the workspace command **Open jj review**. The prototype vendors JayJay's
+standalone `DiffPane`, its model/theme metadata, and diff stylesheet from
+`8f4cf6fccfaab803b7bc603d95e54faa9988b14f`. The package's Apache-2.0 license and provenance are in
+`client/vendor/jayjay`. Import extensions and readonly annotations are adapted locally; component
+rendering behavior stays upstream's. No new npm dependency, font, worker, WASM, or second React root
+is shipped. The stylesheet is a generated string in the ordinary plugin client bundle.
+
+jj produces complete-context, per-file Git-format patches between pinned endpoints. The server
+adapts these into aligned JayJay rows; the client collapses unchanged context and retains the full
+rows for Show all. This tests the upstream **renderer**, not JayJay's Rust diff/syntax engine or its
+review-storage application. It has line coloring but no syntax or word highlighting. Binary and
+metadata-only changes show notices. The current action is the branch comparison; selected changes,
+comments, review marks, and arbitrary revsets are outside this prototype.
+
+Explicit Open/Refresh snapshots once, then pins the operation, base, and target. File reads verify
+the selected repository and changed-file membership and keep using the pinned operation. No
+background refresh moves the comparison. The server's jj output limit is 16 MiB and the row adapter
+limits each file to 20,000 diff lines. Large files are not virtualized.
+
+Validation on this branch:
+
+- Paseo 0.15.2's actual `compileDirectoryPlugin` accepts both bundles. The client bundle is about 75
+  KB, including the unchanged History feature, vendored pane, and embedded styles.
+- A headless Chromium harness evaluated those compiled bundles, supplied SDK context/RPC shims, and
+  mounted the registered panel with React/React DOM 19.1.0. This is browser evidence, not a claim of
+  having reloaded the plugin in the user's running Paseo application. The preview harness loaded its
+  host React runtime from a CDN; the plugin itself always uses Paseo's host React.
+- Both columns copied seven exact lines, excluding the opposite side and gutters. Switching columns
+  clears the prior DOM selection so a new drag does not start dragging the old range.
+- Wrapped lines stayed aligned. File navigation, binary notices, nested repository switching,
+  collapsed context, Show all, and explicit refresh after an agent rewrite worked without browser
+  console errors.
+- Expanding a 10,000-line text file took about 1.3 seconds in that harness, with roughly 39 MB of
+  reported JS heap in the preview page. This is one synthetic measurement, not a performance
+  guarantee or evidence for every file size.
+- Real-jj tests cover snapshot stability after rewrites, file metadata, literal names, additions,
+  deletions, renames, EOF markers, binaries, and repository/path validation.
 
 ## Requirements and comparison
 

@@ -97,12 +97,12 @@ Neovide for this jj workspace; later clicks send another review request to the s
 instance. The root and nested repositories share that window, and sibling jj workspaces get separate
 windows. Diffview decides whether to open a new tab or reuse an identical comparison.
 
-Select a history row and click **Review change** below the graph to review just that change.
-Shift-click another row to select an inclusive range, then click **Review range**. The selection
-follows a linear ancestry path and highlights its changes; either click order works. A normal click
-clears the range. If the path extends beyond loaded history, load older changes first. Ranges across
-separate branches or merges are rejected. A merge change itself also needs a merged-parent baseline,
-so use the branch button for those comparisons for now.
+Select a history row and click the **Review change** icon beside the bookmark button in its details
+to review just that change. Shift-click another row to select an inclusive range, then click
+**Review range**. The selection follows a linear ancestry path and highlights its changes; either
+click order works. A normal click clears the range. If the path extends beyond loaded history, load
+older changes first. Ranges across separate branches or merges are rejected. A merge change itself
+also needs a merged-parent baseline, so use the branch button for those comparisons for now.
 
 Selected-change and range review snapshot edits on disk, resolve both endpoints at one jj operation,
 and open a fixed comparison from the oldest selected change's parent to the newest selected commit.

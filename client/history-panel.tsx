@@ -438,15 +438,13 @@ function RepositoryHistory({
             />
           </ScrollView>
 
-          {desktop && selected ? (
+          {desktop && selected && endIdentity ? (
             <View style={styles.reviewControls}>
-              {endIdentity ? (
-                <Text style={styles.accent}>
-                  {range
-                    ? `${range.length} changes selected · ${range.at(-1)!.changeId.slice(0, 8)} → ${range[0].changeId.slice(0, 8)}`
-                    : "Range selection"}
-                </Text>
-              ) : null}
+              <Text style={styles.accent}>
+                {range
+                  ? `${range.length} changes selected · ${range.at(-1)!.changeId.slice(0, 8)} → ${range[0].changeId.slice(0, 8)}`
+                  : "Range selection"}
+              </Text>
               <ReviewButton
                 theme={theme}
                 workspaceId={workspaceId}
@@ -455,10 +453,7 @@ function RepositoryHistory({
                 disabled={!!selectionError || !reviewSelection}
               />
               <Text style={selectionError ? styles.error : styles.muted}>
-                {selectionError ??
-                  (endIdentity
-                    ? "Click a change to clear the range."
-                    : "Shift-click another change to select a range.")}
+                {selectionError ?? "Click a change to clear the range."}
               </Text>
             </View>
           ) : null}
@@ -471,22 +466,37 @@ function RepositoryHistory({
                   <Text style={styles.workspaceBadge}>Working copy</Text>
                 ) : null}
                 {selected.isEmpty ? <Text style={styles.muted}>empty</Text> : null}
-                <Pressable
-                  onPress={() =>
-                    setCreateTarget({
-                      kind: "change",
-                      commitId: selected.commitId,
-                      changeId: selected.changeId,
-                    })
-                  }
-                  disabled={bookmarks.busy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Create bookmark on selected change"
-                  style={{ marginLeft: "auto", padding: 4 }}
-                >
-                  <Icon name="BookmarkPlus" size={15} color={theme.colors.foregroundMuted} />
-                </Pressable>
+                <View style={styles.detailActions}>
+                  {desktop ? (
+                    <ReviewButton
+                      theme={theme}
+                      workspaceId={workspaceId}
+                      repository={repository}
+                      selection={reviewSelection}
+                      disabled={!!selectionError || !reviewSelection}
+                      iconOnly
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() =>
+                      setCreateTarget({
+                        kind: "change",
+                        commitId: selected.commitId,
+                        changeId: selected.changeId,
+                      })
+                    }
+                    disabled={bookmarks.busy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create bookmark on selected change"
+                    style={{ padding: 4 }}
+                  >
+                    <Icon name="BookmarkPlus" size={15} color={theme.colors.foregroundMuted} />
+                  </Pressable>
+                </View>
               </View>
+              {desktop && selectionError ? (
+                <Text style={styles.error}>{selectionError}</Text>
+              ) : null}
               <Text style={styles.description} selectable>
                 {selected.description.trim() ||
                   (selected.parents.length === 0 ? "root()" : "No description")}
@@ -582,6 +592,7 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       backgroundColor: colors.surface1,
     },
     detailsContent: { padding: 12, gap: 7 },
+    detailActions: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" },
     reviewControls: {
       padding: 8,
       gap: 4,

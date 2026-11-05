@@ -11,12 +11,14 @@ export function ReviewButton({
   repository,
   disabled,
   selection = null,
+  iconOnly = false,
 }: {
   readonly theme: PluginTheme;
   readonly workspaceId: string;
   readonly repository: string;
   readonly disabled: boolean;
   readonly selection?: ReviewSelection | null;
+  readonly iconOnly?: boolean;
 }) {
   const open = useRpc(reviewBranchRpc);
   const openSelection = useRpc(reviewSelectionRpc);
@@ -35,6 +37,7 @@ export function ReviewButton({
   const busy = review.isPending;
   const label =
     selection?.kind === "range" ? "Review range" : selection ? "Review change" : "Review branch";
+  const showLabel = selection !== null && !iconOnly;
   return (
     <Pressable
       onPress={() => review.mutate(selection)}
@@ -44,7 +47,7 @@ export function ReviewButton({
       accessibilityState={{ disabled: disabled || busy, busy }}
       testID={`jj-review-${selection?.kind ?? "branch"}`}
       style={({ pressed }) => ({
-        ...(selection
+        ...(showLabel
           ? { paddingHorizontal: 8, gap: 6, flexDirection: "row" as const }
           : { width: 32 }),
         height: 32,
@@ -58,7 +61,7 @@ export function ReviewButton({
       ) : (
         <Icon name="ExternalLink" size={15} color={theme.colors.foregroundMuted} />
       )}
-      {selection ? (
+      {showLabel ? (
         <Text style={{ color: theme.colors.foreground, fontSize: 12 }}>{label}</Text>
       ) : null}
     </Pressable>

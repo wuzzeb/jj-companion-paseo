@@ -7,47 +7,114 @@ import {
   reviewFileSchema,
   reviewOpenRpc,
   reviewSnapshotSchema,
+  reviewTargetSchema,
+  reviewTargetLabel,
+  branchReview,
+  type ReviewTarget,
   type ReviewSnapshot,
 } from "../shared/review.js";
 import { jsonLines, runJj } from "./jj.js";
 import { resolveRepository } from "./repository.js";
 import { patchToView } from "./review-patch.js";
+import { revisionSchema } from "../shared/bookmarks.js";
+import { linearRange } from "../shared/linear-range.js";
 
 const fileTemplate =
   'json({"path" => self.path(), "oldPath" => self.source().path(), "status" => self.status_char()}) ++ "\\n"';
 const filesSchema = z.array(reviewFileSchema).readonly();
+const nodeSchema = revisionSchema.extend({ parents: z.array(z.string()).readonly() }).readonly();
+const revisionTemplate =
+  'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id())}) ++ "\\n"';
+
+function diffArguments(snapshot: ReviewSnapshot): string[] {
+  const comparison = snapshot.comparison;
+  return comparison.kind === "endpoints"
+    ? ["--from", comparison.from, "--to", comparison.to]
+    : ["-r", comparison.revisions.join(" | ")];
+}
 
 async function changedFiles(root: string, snapshot: ReviewSnapshot, signal?: AbortSignal) {
   return filesSchema.parse(
     jsonLines(
-      await runJj(
-        root,
-        ["diff", "--from", snapshot.from, "--to", snapshot.to, "-T", fileTemplate],
-        { operation: snapshot.operation, signal },
-      ),
+      await runJj(root, ["diff", ...diffArguments(snapshot), "-T", fileTemplate], {
+        operation: snapshot.operation,
+        signal,
+      }),
     ),
   );
 }
 
-export async function openReview(root: string, signal?: AbortSignal) {
+export async function openReview(
+  root: string,
+  input: ReviewTarget = branchReview,
+  signal?: AbortSignal,
+) {
+  const target = reviewTargetSchema.parse(input);
   root = await realpath(root);
   await runJj(root, ["util", "snapshot"], { readOnly: false, signal });
   const operation = (
     await runJj(root, ["op", "log", "--no-graph", "-n", "1", "-T", "id"], { signal })
   ).trim();
-  const resolve = async (revset: string) => {
+  const read = async (revset: string) => {
     const output = await runJj(
       root,
-      ["log", "--no-graph", "-r", revset, "-T", 'commit_id ++ "\\n"'],
+      ["log", "--no-graph", "-r", revset, "-n", "1001", "-T", revisionTemplate],
       { operation, signal },
     );
-    const ids = output.trim().split("\n").filter(Boolean);
-    if (ids.length !== 1) throw new Error(`${revset} must resolve to exactly one revision.`);
-    return ids[0];
+    return z.array(nodeSchema).readonly().parse(jsonLines(output));
   };
-  const from = await resolve("fork_point(main|@)");
-  const to = await resolve("@");
-  const snapshot = reviewSnapshotSchema.parse({ root, operation, from, to });
+  const resolve = async (revset: string) => {
+    const nodes = await read(revset);
+    if (nodes.length !== 1) throw new Error(`${revset} must resolve to exactly one revision.`);
+    return nodes[0].commitId;
+  };
+  let comparison: ReviewSnapshot["comparison"];
+  if (target.kind === "branch" || target.kind === "endpoints") {
+    const from = await resolve(target.kind === "branch" ? "fork_point(main|@)" : target.from);
+    const to = await resolve(target.kind === "branch" ? "@" : target.to);
+    comparison = { kind: "endpoints", from, to };
+  } else {
+    let revisions: ReadonlyArray<string>;
+    if (target.kind === "revisions")
+      revisions = (await read(target.revset)).map((node) => node.commitId);
+    else {
+      const targets = target.end ? [target.anchor, target.end] : [target.anchor];
+      const candidates = await read(
+        `all() & (${targets.map((revision) => `change_id("${revision.changeId}")`).join(" | ")})`,
+      );
+      const resolved = targets.map((revision) => {
+        const matches = candidates.filter((node) => node.changeId === revision.changeId);
+        const exact = matches.find((node) => node.commitId === revision.commitId);
+        if (exact) return exact;
+        if (matches.length === 1) return matches[0];
+        throw new Error(
+          "A selected change is missing or divergent. Refresh history and select it again.",
+        );
+      });
+      if (resolved.length === 1) revisions = [resolved[0].commitId];
+      else {
+        const [anchor, end] = resolved;
+        const interval = await read(
+          `${anchor.commitId}::${end.commitId} | ${end.commitId}::${anchor.commitId}`,
+        );
+        const path = linearRange(interval, anchor.commitId, end.commitId);
+        if (!path)
+          throw new Error(
+            "Select changes on the same linear stack. Ranges cannot cross branches or merges.",
+          );
+        revisions = path.map((node) => node.commitId);
+      }
+    }
+    if (revisions.length === 0) throw new Error("The selected revset is empty.");
+    if (revisions.length > 1000) throw new Error("Review at most 1,000 changes at a time.");
+    comparison = { kind: "revisions", revisions };
+  }
+  const snapshot = reviewSnapshotSchema.parse({
+    root,
+    operation,
+    comparison,
+    label: reviewTargetLabel(target),
+  });
   return { snapshot, files: await changedFiles(root, snapshot, signal) };
 }
 
@@ -66,10 +133,7 @@ export async function readReviewFile(
     root,
     [
       "diff",
-      "--from",
-      snapshot.from,
-      "--to",
-      snapshot.to,
+      ...diffArguments(snapshot),
       "--git",
       "--context=2147483647",
       "--",
@@ -88,7 +152,10 @@ export async function readReviewFile(
   };
 }
 
-async function repository(input: RpcInput<typeof reviewOpenRpc>, { paseo }: PluginHandlerContext) {
+async function repository(
+  input: Pick<RpcInput<typeof reviewOpenRpc>, "workspaceId" | "repository">,
+  { paseo }: PluginHandlerContext,
+) {
   const workspace = await paseo.workspaces.ref(input.workspaceId).refresh();
   if (!workspace || workspace.archivingAt) throw new Error("Workspace is unavailable.");
   const root = await resolveRepository(workspace.workspaceDirectory, input.repository);
@@ -106,7 +173,9 @@ export function createReviews() {
   }
   return {
     open(input: RpcInput<typeof reviewOpenRpc>, context: PluginHandlerContext) {
-      return run(async () => openReview(await repository(input, context), lifetime.signal));
+      return run(async () =>
+        openReview(await repository(input, context), input.target, lifetime.signal),
+      );
     },
     file(input: RpcInput<typeof reviewFileRpc>, context: PluginHandlerContext) {
       return run(async () =>

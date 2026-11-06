@@ -7,6 +7,7 @@ import { openReview, readReviewFile } from "./review.js";
 import { runJj } from "./jj.js";
 import { patchToView } from "./review-patch.js";
 import { collapseContext } from "../client/review-context.js";
+import { revisionSchema } from "../shared/bookmarks.js";
 
 const configDirectory = await mkdtemp(join(tmpdir(), "jj-review-config-"));
 const config = join(configDirectory, "config.toml");
@@ -73,7 +74,7 @@ test("real jj full-context diffs align both sides, expose collapsed context, and
     "file browsing must not snapshot or alter the operation log",
   );
   const refreshed = await openReview(root);
-  assert.notEqual(refreshed.snapshot.to, review.snapshot.to);
+  assert.notDeepEqual(refreshed.snapshot.comparison, review.snapshot.comparison);
   assert.deepEqual(
     text(
       (await readReviewFile(root, { snapshot: refreshed.snapshot, path: "sample.txt" })).view,
@@ -137,4 +138,97 @@ test("patch adapter preserves asymmetric edits and rejects missing full context"
   assert.equal(view.rows[1].cells[1].noEofNewline, true);
   assert.throws(() => patchToView("@@ -8,1 +8,1 @@\n-old\n+new\n"), /complete file context/);
   assert.throws(() => patchToView("@@ -1,2 +1,2 @@\n only one line\n"), /incomplete/);
+});
+
+const revision = async (root: string, revset = "@") =>
+  revisionSchema.parse(
+    JSON.parse(
+      await runJj(root, [
+        "log",
+        "--no-graph",
+        "-r",
+        revset,
+        "-T",
+        'json({"commitId" => commit_id, "changeId" => change_id})',
+      ]),
+    ),
+  );
+
+test("endpoint and revset comparisons pin the requested revisions instead of the working copy", async (t) => {
+  const { root } = await fixture(t);
+  await writeFile(join(root, "first.txt"), "first\n");
+  await jj(root, "describe", "-m", "first");
+  const first = await revision(root);
+  await jj(root, "new", "-m", "second");
+  await writeFile(join(root, "second.txt"), "second\n");
+  await jj(root, "util", "snapshot");
+  const second = await revision(root);
+  await jj(root, "new", "-m", "later");
+  await writeFile(join(root, "later.txt"), "must not appear\n");
+  const endpoints = await openReview(root, {
+    kind: "endpoints",
+    from: first.commitId,
+    to: second.commitId,
+  });
+  assert.deepEqual(
+    endpoints.files.map((file) => file.path),
+    ["second.txt"],
+  );
+  assert.deepEqual(endpoints.snapshot.comparison, {
+    kind: "endpoints",
+    from: first.commitId,
+    to: second.commitId,
+  });
+  for (const target of [
+    { kind: "revisions" as const, revset: `${first.changeId}::${second.changeId}` },
+    { kind: "selection" as const, anchor: first, end: second },
+    { kind: "selection" as const, anchor: second, end: first },
+  ]) {
+    const review = await openReview(root, target);
+    assert.deepEqual(
+      review.files.map((file) => file.path),
+      ["first.txt", "second.txt"],
+    );
+    assert.deepEqual(
+      text((await readReviewFile(root, { snapshot: review.snapshot, path: "first.txt" })).view, 1),
+      ["first"],
+    );
+  }
+  await assert.rejects(
+    openReview(root, { kind: "endpoints", from: "all()", to: "@" }),
+    /exactly one/,
+  );
+  await assert.rejects(openReview(root, { kind: "revisions", revset: "none()" }), /empty/);
+});
+
+test("selected changes follow unambiguous rewrites and merged-parent baselines", async (t) => {
+  const { root, lines } = await fixture(t);
+  lines[4] = "left side\n";
+  await writeFile(join(root, "sample.txt"), lines.join(""));
+  await jj(root, "describe", "-m", "left");
+  const left = await revision(root);
+  await jj(root, "new", "main", "-m", "right");
+  const rightLines = [...lines];
+  rightLines[4] = "line 5\n";
+  rightLines[24] = "right side\n";
+  await writeFile(join(root, "sample.txt"), rightLines.join(""));
+  await jj(root, "util", "snapshot");
+  const right = await revision(root);
+  await assert.rejects(
+    openReview(root, { kind: "selection", anchor: left, end: right }),
+    /same linear stack/,
+  );
+  await jj(root, "new", left.commitId, right.commitId, "-m", "merge");
+  const merge = await revision(root);
+  lines[24] = "right side\n";
+  lines[14] = "merge edit\n";
+  await writeFile(join(root, "sample.txt"), lines.join(""));
+  const review = await openReview(root, { kind: "selection", anchor: merge });
+  const view = (await readReviewFile(root, { snapshot: review.snapshot, path: "sample.txt" })).view;
+  assert.equal(view.added, 1);
+  assert.equal(view.removed, 1);
+  assert.equal(view.rows[4].cells[0].spans[0].text, "left side");
+  assert.equal(view.rows[24].cells[0].spans[0].text, "right side");
+  assert.equal(view.rows[14].cells[0].spans[0].text, "line 15");
+  assert.equal(view.rows[14].cells[1].spans[0].text, "merge edit");
 });

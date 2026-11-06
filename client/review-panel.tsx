@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Text } from "react-native";
 import {
@@ -14,16 +14,25 @@ import {
   reviewOpenRpc,
   type ReviewFile,
   type ReviewSnapshot,
+  reviewTargetSchema,
+  reviewTargetLabel,
+  branchReview,
+  type ReviewTarget,
 } from "../shared/review.js";
 import { DiffPane } from "./vendor/jayjay/components/diff/DiffPane.js";
 import { diffCss } from "./vendor/jayjay/styles.js";
 import { reviewCss } from "./review-styles.js";
 import { collapseContext } from "./review-context.js";
+import { ReviewComparisonForm } from "./review-comparison-form.js";
+import type { ReviewNavigation, ReviewRequest } from "./review-navigation.js";
 
 const stateSchema = z
   .object({
     repository: repositorySelectionSchema.default("."),
     path: z.string().nullable().default(null),
+    target: reviewTargetSchema.default(branchReview),
+    generation: z.number().int().nonnegative().default(0),
+    requestId: z.string().nullable().default(null),
   })
   .readonly();
 const labels = {
@@ -36,8 +45,15 @@ const labels = {
   showAll: "Show all",
 };
 
-export function ReviewPanel(props: PluginWorkspacePanelProps) {
+export function ReviewPanel(
+  props: PluginWorkspacePanelProps & { readonly reviewNavigation: ReviewNavigation },
+) {
   const directory = useWorkspace(props.workspaceId, (workspace) => workspace.directory);
+  const request = useSyncExternalStore(
+    props.reviewNavigation.subscribe,
+    () => props.reviewNavigation.get(props.host.id, props.workspaceId),
+    () => null,
+  );
   if (props.layout.platform !== "web")
     return <Text>Review is available in Paseo on desktop and web.</Text>;
   return (
@@ -45,6 +61,7 @@ export function ReviewPanel(props: PluginWorkspacePanelProps) {
       key={`${props.host.id}:${props.workspaceId}:${directory}`}
       {...props}
       directory={directory}
+      request={request}
     />
   );
 }
@@ -55,8 +72,29 @@ function Review({
   workspaceId,
   tab,
   directory,
-}: PluginWorkspacePanelProps & { readonly directory: string | null }) {
-  const [state, setState] = useTabState(tab, stateSchema, { repository: ".", path: null });
+  request,
+}: PluginWorkspacePanelProps & {
+  readonly directory: string | null;
+  readonly request: ReviewRequest | null;
+}) {
+  const [state, setState] = useTabState(tab, stateSchema, {
+    repository: ".",
+    path: null,
+    target: branchReview,
+    generation: 0,
+    requestId: null,
+  });
+  const waiting = request !== null && request.id !== state.requestId;
+  useEffect(() => {
+    if (request && waiting)
+      setState({
+        repository: request.repository,
+        path: null,
+        target: request.target,
+        generation: state.generation + 1,
+        requestId: request.id,
+      });
+  }, [request, waiting, state.generation, setState]);
   const [copySide, setCopySide] = useState<"old" | "new" | null>(null);
   const listRepositories = useRpc(repositoriesRpc);
   const open = useRpc(reviewOpenRpc);
@@ -70,9 +108,17 @@ function Review({
     ? state.repository
     : ".";
   const comparison = useQuery({
-    queryKey: ["jj-review", host.id, workspaceId, directory, repository],
-    queryFn: () => open({ workspaceId, repository }),
-    enabled: repositories.isSuccess && repositories.data.length > 0,
+    queryKey: [
+      "jj-review-v2",
+      host.id,
+      workspaceId,
+      directory,
+      repository,
+      state.target,
+      state.generation,
+    ],
+    queryFn: () => open({ workspaceId, repository, target: state.target }),
+    enabled: !waiting && repositories.isSuccess && repositories.data.length > 0,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
@@ -93,7 +139,7 @@ function Review({
     "--jj-removed-ink": colors.statusDanger,
     "--jj-added-bg": `color-mix(in srgb, ${colors.statusSuccess} 12%, ${colors.surface0})`,
     "--jj-removed-bg": `color-mix(in srgb, ${colors.statusDanger} 12%, ${colors.surface0})`,
-    "--jj-mono": "ui-monospace, SFMono-Regular, Consolas, monospace",
+    "--jj-mono": "var(--fontFamily-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
   } as CSSProperties;
   const refresh = () => {
     if (repositories.error) void repositories.refetch();
@@ -121,7 +167,7 @@ function Review({
           <select
             aria-label="Review repository"
             value={repository}
-            onChange={(event) => setState({ repository: event.target.value, path: null })}
+            onChange={(event) => setState({ ...state, repository: event.target.value, path: null })}
           >
             {repositories.data.map((entry) => (
               <option key={entry.id} value={entry.id}>
@@ -133,12 +179,10 @@ function Review({
           <span>{repositories.data?.[0]?.label}</span>
         )}
         <span
-          className="review-revisions"
-          title={data ? `${data.snapshot.from} → ${data.snapshot.to}` : undefined}
+          className="review-current"
+          title={data?.snapshot.label ?? reviewTargetLabel(state.target)}
         >
-          {data
-            ? `${data.snapshot.from.slice(0, 10)} → ${data.snapshot.to.slice(0, 10)}`
-            : "fork_point(main|@) → @"}
+          {data?.snapshot.label ?? reviewTargetLabel(state.target)}
         </span>
         <button
           onClick={refresh}
@@ -148,6 +192,24 @@ function Review({
           {comparison.isFetching ? "Refreshing…" : "Refresh"}
         </button>
       </header>
+      <ReviewComparisonForm
+        key={`${state.generation}:${JSON.stringify(state.target)}`}
+        target={state.target}
+        busy={waiting || comparison.isFetching}
+        onOpen={(target: ReviewTarget) =>
+          setState({ ...state, target, path: null, generation: state.generation + 1 })
+        }
+      />
+      {data ? (
+        <details className="review-pinned">
+          <summary>Pinned revisions</summary>
+          <code data-pmono="">
+            {data.snapshot.comparison.kind === "endpoints"
+              ? `${data.snapshot.comparison.from} → ${data.snapshot.comparison.to}`
+              : data.snapshot.comparison.revisions.join(" | ")}
+          </code>
+        </details>
+      ) : null}
       {repositories.error || comparison.error ? (
         <div role="alert" className="review-refresh-error review-error">
           {(repositories.error ?? comparison.error)?.message}
@@ -159,7 +221,7 @@ function Review({
         <div className="review-message">Loading review…</div>
       ) : null}
       {data && data.files.length === 0 ? (
-        <div className="review-message">No changes from main’s fork point.</div>
+        <div className="review-message">No changes in this comparison.</div>
       ) : null}
       {data && file ? (
         <div className="review-body">
@@ -176,7 +238,7 @@ function Review({
                 title={
                   entry.oldPath === entry.path ? entry.path : `${entry.oldPath} → ${entry.path}`
                 }
-                onClick={() => setState({ repository, path: entry.path })}
+                onClick={() => setState({ ...state, repository, path: entry.path })}
               >
                 <span className="review-status" aria-hidden="true">
                   {entry.status}
@@ -229,7 +291,7 @@ function FilePane({
   return (
     <section className="review-file-pane" aria-label={`Diff for ${file.path}`}>
       <div className="review-file-header">
-        <span className="review-path">
+        <span className="review-path" data-pmono="">
           {file.oldPath === file.path ? file.path : `${file.oldPath} → ${file.path}`}
         </span>
         {complete ? (
@@ -251,7 +313,7 @@ function FilePane({
       {query.isPending ? <div className="review-message">Loading diff…</div> : null}
       {query.data?.notice ? <div className="review-notice">{query.data.notice}</div> : null}
       {view && view.rows.length > 0 ? (
-        <div className="review-code">
+        <div className="review-code" data-pmono="">
           <DiffPane view={view} split showAll={() => setShowAll(true)} labels={labels} />
         </div>
       ) : null}

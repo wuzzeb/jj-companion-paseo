@@ -91,16 +91,26 @@ therefore reflects the latest jj snapshot, rather than unsnapshotted edits on di
 repositories and ordinary directories show an empty state.
 
 On the experimental `jayjay-review-tab` branch, use **Open jj review** in Paseo's command center to
-open a **jj Review** workspace tab on desktop/web. It compares `fork_point(main|@)` with `@`, with a
-repository selector, changed-file list, and JayJay's side-by-side `DiffPane`. Click a collapsed
-context row or **Show all** to reveal the complete file; **Collapse context** hides unchanged
-regions again. Mouse selections copy one column without line numbers.
+open a **jj Review** workspace tab on desktop/web. The default is `fork_point(main|@)` → `@`. The
+comparison controls also accept a change/revset (jj's `diff -r` semantics) or explicit **From** and
+**To** revisions. Click **Open diff** to apply edits. The header describes the active comparison;
+expand **Pinned revisions** to see the exact commits. A repository selector, changed-file list, and
+JayJay's side-by-side `DiffPane` provide file navigation. Click a collapsed context row or **Show
+all** to reveal the complete file; **Collapse context** hides unchanged regions again. Mouse
+selections copy one column without line numbers. Code uses Paseo's configured monospace/terminal
+font, including live preference changes; interface labels keep the interface font.
 
-Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and commit
-endpoints. Browsing files and revealing context keep that snapshot, so agent changes appear only
-after Refresh. This prototype shows plain text without syntax or word highlighting. Binary files and
-path/permission-only changes show notices; individual-change review, comments, and review marks are
-not included. Files are limited to 20,000 diff lines and jj's 16 MiB output limit.
+History's top review icon opens the branch comparison. Select a row and click the review icon beside
+its bookmark button to review one change. Shift-click another row for an inclusive linear range,
+then **Review range**. A normal click clears the range. These actions open or update the review tab
+with the selected repository and changes. Individual merge changes use the merged-parent baseline.
+
+Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and the
+comparison's concrete commit IDs. Browsing files and revealing context keep that snapshot, so agent
+changes appear only after Refresh. This prototype shows plain text without syntax or word
+highlighting. Binary files and path/permission-only changes show notices. Comments and review marks
+are not included. Files are limited to 20,000 diff lines and jj's 16 MiB output limit; revsets may
+select up to 1,000 changes.
 
 The small JayJay source subset is vendored under `client/vendor/jayjay` with its Apache-2.0 license
 and pinned revision. Styles are embedded in JavaScript; no package installation, worker, WASM build,

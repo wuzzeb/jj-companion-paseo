@@ -42,18 +42,21 @@ jj produces complete-context, per-file Git-format patches between pinned endpoin
 adapts these into aligned JayJay rows; the client collapses unchanged context and retains the full
 rows for Show all. This tests the upstream **renderer**, not JayJay's Rust diff/syntax engine or its
 review-storage application. It has line coloring but no syntax or word highlighting. Binary and
-metadata-only changes show notices. The current action is the branch comparison; selected changes,
-comments, review marks, and arbitrary revsets are outside this prototype.
+metadata-only changes show notices. The tab now accepts the default branch comparison, custom
+From/To endpoints, jj revsets, and History's single-change or inclusive linear-range selection.
+Comments and review marks remain outside this prototype.
 
-Explicit Open/Refresh snapshots once, then pins the operation, base, and target. File reads verify
-the selected repository and changed-file membership and keep using the pinned operation. No
-background refresh moves the comparison. The server's jj output limit is 16 MiB and the row adapter
-limits each file to 20,000 diff lines. Large files are not virtualized.
+Explicit Open/Refresh snapshots once, then pins the operation and concrete endpoint or revision IDs.
+Revision comparisons use `jj diff -r` throughout, including file listing, so individual merge
+changes get jj's merged-parent baseline without synthetic commits. File reads verify the selected
+repository and changed-file membership and keep using the pinned operation. No background refresh
+moves the comparison. The server's jj output limit is 16 MiB and the row adapter limits each file to
+20,000 diff lines. Large files are not virtualized.
 
 Validation on this branch:
 
-- Paseo 0.15.2's actual `compileDirectoryPlugin` accepts both bundles. The client bundle is about 75
-  KB, including the unchanged History feature, vendored pane, and embedded styles.
+- Paseo 0.15.2's actual `compileDirectoryPlugin` accepts both bundles. The client bundle is about 87
+  KB, including History, the vendored pane, and embedded styles.
 - A headless Chromium harness evaluated those compiled bundles, supplied SDK context/RPC shims, and
   mounted the registered panel with React/React DOM 19.1.0. This is browser evidence, not a claim of
   having reloaded the plugin in the user's running Paseo application. The preview harness loaded its
@@ -68,6 +71,22 @@ Validation on this branch:
   guarantee or evidence for every file size.
 - Real-jj tests cover snapshot stability after rewrites, file metadata, literal names, additions,
   deletions, renames, EOF markers, binaries, and repository/path validation.
+
+November 6 follow-up: comparison modes are visible/editable, and History can open a selected change
+or Shift-click range in the review workspace tab. The SDK's `openPanel` has no initial-state
+argument, so a client-owned store hands requests to the tab, scoped by host and workspace. Request
+IDs allow reopening an identical selection to refresh it; accepted requests persist in the tab's own
+state. The browser harness also exercised the registered History and Review components together,
+including actual React Native Web presses, shift selection, and From/To submission.
+
+Paseo's root interface-font rule overrides ordinary DOM descendants, which explained the initial
+non-monospace rendering. Code now carries Paseo's `data-pmono` marker and uses the existing
+Unistyles `--fontFamily-mono` theme variable, with a system-monospace fallback. No private
+settings-storage access or extra font preference is needed. The nested-key variable spelling and
+default CSS-variable support were checked against Unistyles 3.2.4's
+[theme serializer](https://unpkg.com/react-native-unistyles@3.2.4/src/web/css/state.ts). Browser
+checks reproduced Paseo's root font rule: code resolved to Monaspace Neon, interface text to Noto
+Sans, and the code font changed live when the mono variable changed.
 
 ## Requirements and comparison
 

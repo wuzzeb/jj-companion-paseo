@@ -1,14 +1,29 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { HistoryPanel } from "./client/history-panel.js";
 import { ReviewPanel } from "./client/review-panel.js";
+import { createReviewNavigation } from "./client/review-navigation.js";
 
 export default function contribute(client: PluginClientContext) {
+  const navigation = createReviewNavigation((workspaceId) =>
+    client.openPanel("review", { workspaceId, location: "workspace" }),
+  );
+  const Review = (props: PluginWorkspacePanelProps) => (
+    <ReviewPanel {...props} reviewNavigation={navigation} />
+  );
+  const History = (props: PluginWorkspacePanelProps) => (
+    <HistoryPanel
+      {...props}
+      openReview={(repository, target) =>
+        navigation.open(props.host.id, props.workspaceId, repository, target)
+      }
+    />
+  );
   client.addWorkspacePanel({
     id: "review",
     title: "jj Review",
     icon: "GitCompareArrows",
     locations: ["workspace"],
-    Component: ReviewPanel,
+    Component: Review,
   });
   client.addCommandCenterItem({
     id: "open-review",
@@ -24,7 +39,7 @@ export default function contribute(client: PluginClientContext) {
     title: "jj Companion",
     icon: "GitGraph",
     locations: ["explorer", "workspace"],
-    Component: HistoryPanel,
+    Component: History,
   });
   client.addCommandCenterItem({
     id: "open-history",
@@ -35,5 +50,5 @@ export default function contribute(client: PluginClientContext) {
       openPanel("history", { location: "explorer" });
     },
   });
-  return () => {};
+  return () => navigation.dispose();
 }

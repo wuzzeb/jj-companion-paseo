@@ -11,29 +11,37 @@ import {
 import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { repositoriesRpc, repositorySelectionSchema } from "../shared/repositories.js";
 import { RepositoryPicker } from "./repository-picker.js";
-import { historyLimit, historyRpc, maxHistoryLimit } from "../shared/history.js";
+import { historyLimit, historyRpc, maxHistoryLimit, type Change } from "../shared/history.js";
+import { linearRange } from "../shared/linear-range.js";
+import { branchReview, type ReviewTarget } from "../shared/review.js";
 import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
 import { useBookmarks } from "./use-bookmarks.js";
 import { BookmarkControls } from "./bookmark-controls.js";
+import { ReviewButton } from "./review-button.js";
 import { BookmarkChip } from "./bookmark-chip.js";
 import { ChangeRow } from "./change-row.js";
 import type { BookmarkMenuTarget } from "./bookmark-menu.js";
 import type { Bookmark, BookmarkTarget } from "../shared/bookmarks.js";
 
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
+const selectionSchema = z
+  .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
+  .readonly();
+const revision = ({ commitId, changeId }: Change) => ({ commitId, changeId });
 const historyTabStateSchema = z
   .object({
     repository: repositorySelectionSchema.default("."),
     limit: z.number().int().min(historyLimit).max(maxHistoryLimit),
-    selection: z
-      .object({ commitId: z.string().min(1), changeId: z.string().min(1) })
-      .readonly()
-      .nullable(),
+    selection: selectionSchema.nullable(),
+    rangeEnd: selectionSchema.nullable().default(null),
   })
   .readonly();
 
-export function HistoryPanel(props: PluginWorkspacePanelProps) {
+type OpenReview = (repository: string, target: ReviewTarget) => void;
+export function HistoryPanel(
+  props: PluginWorkspacePanelProps & { readonly openReview: OpenReview },
+) {
   const directory = useWorkspace(props.workspaceId, (workspace) => workspace.directory);
   const workspaceName = useWorkspace(props.workspaceId, (workspace) => workspace.name);
   return (
@@ -53,14 +61,18 @@ function History({
   tab,
   directory,
   workspaceName,
+  layout,
+  openReview,
 }: PluginWorkspacePanelProps & {
   readonly directory: string | null;
   readonly workspaceName: string;
+  readonly openReview: OpenReview;
 }) {
   const [tabState, setTabState] = useTabState(tab, historyTabStateSchema, {
     repository: ".",
     limit: historyLimit,
     selection: null,
+    rangeEnd: null,
   });
   const listRepositories = useRpc(repositoriesRpc);
   const repositories = useQuery({
@@ -75,10 +87,12 @@ function History({
   const state =
     repository === tabState.repository
       ? tabState
-      : { repository, limit: historyLimit, selection: null };
+      : { repository, limit: historyLimit, selection: null, rangeEnd: null };
   return (
     <RepositoryHistory
       key={repository}
+      desktop={layout.platform === "web" && !layout.compact}
+      openReview={(target) => openReview(repository, target)}
       theme={theme}
       host={host}
       workspaceId={workspaceId}
@@ -98,7 +112,7 @@ function History({
             value={repository}
             theme={theme}
             onSelect={(repository) =>
-              setTabState({ repository, limit: historyLimit, selection: null })
+              setTabState({ repository, limit: historyLimit, selection: null, rangeEnd: null })
             }
           />
         ) : null
@@ -119,7 +133,11 @@ function RepositoryHistory({
   repositoryError,
   refreshRepositories,
   repositoryPicker,
+  desktop,
+  openReview,
 }: Pick<PluginWorkspacePanelProps, "theme" | "host" | "workspaceId"> & {
+  readonly desktop: boolean;
+  readonly openReview: (target: ReviewTarget) => void;
   readonly directory: string | null;
   readonly workspaceName: string;
   readonly tabState: z.infer<typeof historyTabStateSchema>;
@@ -129,7 +147,7 @@ function RepositoryHistory({
   setTabState(state: z.infer<typeof historyTabStateSchema>): void;
   refreshRepositories(): void;
 }) {
-  const { limit, selection, repository } = tabState;
+  const { limit, selection, repository, rangeEnd: endIdentity } = tabState;
   const [width, setWidth] = useState(320);
   const panelRef = useRef<View>(null);
   const [menu, setMenu] = useState<BookmarkMenuTarget | null>(null);
@@ -148,6 +166,36 @@ function RepositoryHistory({
   const changes = history?.changes;
   const graph = useMemo(() => layoutGraph(changes ?? []), [changes]);
   const selected = changes ? resolveSelection(changes, selection) : null;
+  const end = changes && endIdentity ? resolveSelection(changes, endIdentity) : null;
+  const range = useMemo(
+    () =>
+      selected && end && changes ? linearRange(changes, selected.commitId, end.commitId) : null,
+    [selected, end, changes],
+  );
+  const reviewSelection: ReviewTarget | null = selected
+    ? endIdentity
+      ? {
+          kind: "selection",
+          anchor: revision(range?.at(-1) ?? selected),
+          end: revision(range?.[0] ?? end ?? selected),
+        }
+      : { kind: "selection", anchor: revision(selected) }
+    : null;
+  const selectionError =
+    endIdentity && !end
+      ? "The other selected change is no longer in this history. Select the range again."
+      : endIdentity && !range
+        ? "Choose changes on the same linear stack. Load older history if the path is incomplete."
+        : null;
+  const highlighted = useMemo(
+    () =>
+      new Set([
+        ...(range ?? []).map((change) => change.commitId),
+        ...(selected ? [selected.commitId] : []),
+        ...(end ? [end.commitId] : []),
+      ]),
+    [range, selected, end],
+  );
   const refsByCommit = useMemo(() => {
     const entries = new Map<string, Bookmark[]>();
     for (const bookmark of bookmarks.state.data?.bookmarks ?? []) {
@@ -204,6 +252,15 @@ function RepositoryHistory({
         <Icon name="GitGraph" size={15} color={theme.colors.foregroundMuted} />
         <Text style={[styles.title, repositoryPicker ? { flex: 0 } : null]}>History</Text>
         {repositoryPicker}
+        {desktop ? (
+          <ReviewButton
+            theme={theme}
+            target={branchReview}
+            open={openReview}
+            disabled={!history}
+            iconOnly
+          />
+        ) : null}
         <Pressable
           onPress={refresh}
           disabled={query.isFetching}
@@ -263,7 +320,7 @@ function RepositoryHistory({
             <FlatList
               style={styles.list}
               data={history.changes}
-              extraData={selected?.commitId}
+              extraData={highlighted}
               keyExtractor={(change) => change.commitId}
               getItemLayout={(_, index) => ({
                 length: rowHeight,
@@ -272,7 +329,7 @@ function RepositoryHistory({
               })}
               initialNumToRender={20}
               renderItem={({ item: change, index }) => {
-                const active = change.commitId === selected?.commitId;
+                const active = highlighted.has(change.commitId);
                 const summary =
                   change.description.split("\n")[0] ||
                   (change.parents.length === 0 ? "root()" : "(no description)");
@@ -285,10 +342,15 @@ function RepositoryHistory({
                     workspaceId={workspaceId}
                     repository={repository}
                     disabled={bookmarks.busy}
-                    onSelect={() =>
+                    onSelect={(extend) =>
                       setTabState({
                         ...tabState,
-                        selection: { commitId: change.commitId, changeId: change.changeId },
+                        selection:
+                          desktop && extend && selected ? revision(selected) : revision(change),
+                        rangeEnd:
+                          desktop && extend && selected && selected.commitId !== change.commitId
+                            ? revision(change)
+                            : null,
                       })
                     }
                     onMove={(bookmark, target) => {
@@ -386,7 +448,26 @@ function RepositoryHistory({
             />
           </ScrollView>
 
-          {selected ? (
+          {desktop && selected && endIdentity ? (
+            <View style={styles.reviewControls}>
+              <Text style={styles.accent}>
+                {range
+                  ? `${range.length} changes selected · ${range.at(-1)!.changeId.slice(0, 8)} → ${range[0].changeId.slice(0, 8)}`
+                  : "Range selection"}
+              </Text>
+              <ReviewButton
+                theme={theme}
+                open={openReview}
+                target={reviewSelection ?? branchReview}
+                disabled={!!selectionError || !reviewSelection}
+              />
+              <Text style={selectionError ? styles.error : styles.muted}>
+                {selectionError ?? "Click a change to clear the range."}
+              </Text>
+            </View>
+          ) : null}
+
+          {selected && (!desktop || !endIdentity) ? (
             <ScrollView style={styles.details} contentContainerStyle={styles.detailsContent}>
               <View style={styles.refs}>
                 <Text style={styles.detailId}>{selected.changeId.slice(0, 12)}</Text>
@@ -394,21 +475,32 @@ function RepositoryHistory({
                   <Text style={styles.workspaceBadge}>Working copy</Text>
                 ) : null}
                 {selected.isEmpty ? <Text style={styles.muted}>empty</Text> : null}
-                <Pressable
-                  onPress={() =>
-                    setCreateTarget({
-                      kind: "change",
-                      commitId: selected.commitId,
-                      changeId: selected.changeId,
-                    })
-                  }
-                  disabled={bookmarks.busy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Create bookmark on selected change"
-                  style={{ marginLeft: "auto", padding: 4 }}
-                >
-                  <Icon name="BookmarkPlus" size={15} color={theme.colors.foregroundMuted} />
-                </Pressable>
+                <View style={styles.detailActions}>
+                  {desktop ? (
+                    <ReviewButton
+                      theme={theme}
+                      open={openReview}
+                      target={reviewSelection ?? branchReview}
+                      disabled={!!selectionError || !reviewSelection}
+                      iconOnly
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() =>
+                      setCreateTarget({
+                        kind: "change",
+                        commitId: selected.commitId,
+                        changeId: selected.changeId,
+                      })
+                    }
+                    disabled={bookmarks.busy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create bookmark on selected change"
+                    style={{ padding: 4 }}
+                  >
+                    <Icon name="BookmarkPlus" size={15} color={theme.colors.foregroundMuted} />
+                  </Pressable>
+                </View>
               </View>
               <Text style={styles.description} selectable>
                 {selected.description.trim() ||
@@ -432,7 +524,7 @@ function RepositoryHistory({
                 <Text style={styles.error}>This change has conflicts.</Text>
               ) : null}
             </ScrollView>
-          ) : selection ? (
+          ) : !selected && selection ? (
             <Text style={styles.messageText}>
               The selected change is no longer in this history.
             </Text>
@@ -505,6 +597,15 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       backgroundColor: colors.surface1,
     },
     detailsContent: { padding: 12, gap: 7 },
+    detailActions: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" },
+    reviewControls: {
+      padding: 8,
+      gap: 4,
+      alignItems: "flex-start",
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.surface1,
+    },
     detailId: { color: colors.foreground, fontFamily: mono, fontSize: 11 },
     description: { color: colors.foreground, fontSize: 12, lineHeight: 18 },
     fullCommitId: { color: colors.foregroundMuted, fontSize: 10, fontFamily: mono },

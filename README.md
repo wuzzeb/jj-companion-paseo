@@ -60,52 +60,47 @@ Paseo must have plugins enabled (`pluginsEnabled: true` in its config). Reload a
 paseo plugin reload jj-companion
 ```
 
-The plugin also provides a **jj Companion** history tab in Paseo’s Explorer sidebar. Open it from
-the Explorer’s **+** menu, or search for **Open jj history** in the Command Center. It can also be
-moved into a regular workspace pane. The Explorer uses the same tabs and **+** menu on phones,
-tablets, and desktop.
+On the experimental `jayjay-review-tab` branch, **Open jj review** in Paseo's Command Center opens
+one **jj Review** workspace tab on desktop/web. The change graph is on the left, changed files in
+the middle, and the side-by-side diff on the right. This replaces the separate Explorer history
+panel.
+
+Click a change to immediately review it. Its full description, author, timestamp, and IDs appear
+above the code, from the same pinned snapshot as the diff. Shift-click another change to immediately
+review an inclusive linear range; a normal click returns to a single change. Ranges cannot cross
+branches or merges. Individual merge changes use jj's merged-parent baseline. **Branch changes**
+returns to `fork_point(main|@)` → `@`.
+
+The single toolbar describes the active comparison. **Select Changes** opens a dialog for branch
+changes, a single change, a revset (jj's `diff -r` semantics), or explicit **From** and **To**
+revisions. Click **Open diff** to apply edits; Cancel or Escape keeps the current comparison. Expand
+**Current pinned revisions** inside the dialog to see the exact commits. Multi-change and endpoint
+comparisons replace the single-change description with the comparison caption.
 
 If the jj root has immediate child directories containing their own `.jj` directory, a repository
-selector appears directly after **History**. It lists the root first, followed by the child
-repositories by directory name, including ignored checkouts and separately created jj workspaces.
-Discovery goes one level deep and skips directory symlinks. The graph, change details, bookmarks,
-Fetch, and Push all follow the selected repository. Refresh rescans the available repositories; a
-missing selection falls back to the root.
+selector appears beside **Review**. It lists the root first, followed by child repositories by name,
+including ignored checkouts and separately created jj workspaces. Discovery goes one level deep and
+skips directory symlinks. The graph, bookmarks, Fetch, Push, files, and diff all follow this
+selection. Switching repositories returns to its branch comparison and resets the history depth.
+Refresh rescans the available repositories.
 
-The tab shows a commit graph with descriptions, bookmarks, working-copy and workspace labels, and
-conflict markers. Select a change to inspect its full description, author, timestamp, and commit ID.
-Selection follows a rewritten change when its change ID remains unambiguous. History keeps each
-branch's stack together, with the current workspace's stack first, using jj's graph ordering.
-Children always appear before their parents, including at forks and merges. The initial view shows
-200 revisions across all branches; **Load older changes** expands it up to 1,000 revisions in the
-same order. Connections to history outside the loaded rows end in faded stubs.
+The graph shows descriptions, bookmarks, working-copy and workspace labels, and conflicts. History
+keeps each branch's stack together, with the current workspace's stack first, using jj's graph
+ordering. Children appear before their parents, including at forks and merges. It initially shows
+200 revisions across all branches; **Load older changes** expands it up to 1,000 revisions. Graph
+connections outside the loaded rows end in faded stubs. The review tab remembers its repository,
+comparison, selected file, and history depth across app reloads using Paseo's persisted tab state.
 
-Each history tab remembers its repository, selected change, and loaded history depth across app
-reloads using Paseo's persisted tab state. Invalid saved state falls back to 200 changes and
-automatic selection. Switching repositories resets the selected change and history depth. Only
-change and commit IDs are saved for the selection; details come from refreshed history.
+History and bookmarks refresh every 10 seconds while the app is active. These reads do not snapshot
+files or modify jj's operation log, and do not change the pinned diff or description. Click a row
+again or use **Refresh** to reopen a comparison against current revisions. Unambiguous rewrites are
+followed when resolving selected changes. Git-only repositories and ordinary directories show an
+empty state.
 
-History refreshes every 10 seconds while the app is active, and the refresh button reloads it
-immediately. These reads do not snapshot files or modify jj’s operation log. Working-copy metadata
-therefore reflects the latest jj snapshot, rather than unsnapshotted edits on disk. Git-only
-repositories and ordinary directories show an empty state.
-
-On the experimental `jayjay-review-tab` branch, use **Open jj review** in Paseo's command center to
-open a **jj Review** workspace tab on desktop/web. The default is `fork_point(main|@)` → `@`. The
-single toolbar centers the active comparison, including the message for a single change. **Select
-Changes** opens a dialog for branch changes, a single change, a revset (jj's `diff -r` semantics),
-or explicit **From** and **To** revisions. Click **Open diff** to apply edits; Cancel or Escape
-keeps the current comparison. Expand **Current pinned revisions** inside the dialog to see the exact
-commits. A repository selector, changed-file list, and JayJay's side-by-side `DiffPane` provide file
-navigation. Click a collapsed context row or **Show all** to reveal the complete file; **Collapse
-context** hides unchanged regions again. Mouse selections copy one column without line numbers. Code
-uses Paseo's configured monospace/terminal font, including live preference changes; interface labels
-keep the interface font.
-
-History's top review icon opens the branch comparison. Select a row and click the review icon beside
-its bookmark button to review one change. Shift-click another row for an inclusive linear range,
-then **Review range**. A normal click clears the range. These actions open or update the review tab
-with the selected repository and changes. Individual merge changes use the merged-parent baseline.
+Click a collapsed context row or **Show all** to reveal the complete file; **Collapse context**
+hides unchanged regions again. Mouse selections copy one column without line numbers. Code uses
+Paseo's configured monospace/terminal font, including live preference changes; interface labels keep
+the interface font.
 
 Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and the
 comparison's concrete commit IDs. Browsing files and revealing context keep that snapshot, so agent
@@ -119,10 +114,10 @@ and pinned revision. Styles are embedded in JavaScript; no package installation,
 or nested checkout is required to load this branch. `tools/vendor-jayjay.mjs` regenerates the subset
 from a separate JayJay jj checkout when updating it.
 
-The history toolbar provides **Create bookmark**, **Tug**, **Push**, and **Fetch**. These shortcuts
-act on the workspace’s edited change (`@`), independently of the selected graph row. If `@` is empty
-and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at `@`. Actions
-snapshot pending files before resolving the tip, so unsnapshotted work is included.
+The change-list controls provide **Create bookmark**, **Tug**, **Push**, and **Fetch**. These
+shortcuts act on the workspace’s edited change (`@`), independently of the selected graph row. If
+`@` is empty and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at
+`@`. Actions snapshot pending files before resolving the tip, so unsnapshotted work is included.
 
 With no branch bookmark, **Create bookmark** suggests the workspace name. Press Enter or choose
 **Create bookmark** to create it locally, then use **Push** after reviewing it. **Tug** advances the
@@ -142,12 +137,11 @@ selected automatically; choose one explicitly when the repository has multiple r
 row.
 
 Click, right-click, or long-press a local bookmark chip to open a small Push menu for that exact
-bookmark. On desktop, drag a local bookmark chip onto another graph row to move it, including
-backwards and sideways. On mobile, the branch selector and toolbar Push provide the common workflow;
-tapping a local bookmark also opens its Push menu. Remote bookmark labels are read-only. **Manage
-Bookmarks** lists local and remote bookmarks and provides Create and Push actions. The bookmark-plus
-icon in change details creates a bookmark on that exact selected change. Rename, deletion, and
-tracking management can be done in a jj terminal.
+bookmark. Drag a local bookmark chip onto another graph row to move it, including backwards and
+sideways. Remote bookmark labels are read-only. **Manage Bookmarks** lists local and remote
+bookmarks and provides Create and Push actions. The bookmark-plus icon above the change list creates
+a bookmark on that exact selected change. Rename, deletion, and tracking management can be done in a
+jj terminal.
 
 Bookmark operations are serialized across this plugin’s workspaces sharing the same jj repository.
 Stale bookmark positions and abandoned drop targets produce an error and refresh the view. Push and

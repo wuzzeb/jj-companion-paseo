@@ -8,6 +8,7 @@ import {
   reviewOpenRpc,
   reviewSnapshotSchema,
   reviewTargetSchema,
+  reviewedChangeSchema,
   reviewTargetLabel,
   branchReview,
   type ReviewTarget,
@@ -16,17 +17,17 @@ import {
 import { jsonLines, runJj } from "./jj.js";
 import { resolveRepository } from "./repository.js";
 import { patchToView } from "./review-patch.js";
-import { revisionSchema } from "../shared/bookmarks.js";
 import { linearRange } from "../shared/linear-range.js";
 
 const fileTemplate =
   'json({"path" => self.path(), "oldPath" => self.source().path(), "status" => self.status_char()}) ++ "\\n"';
 const filesSchema = z.array(reviewFileSchema).readonly();
-const nodeSchema = revisionSchema
-  .extend({ parents: z.array(z.string()).readonly(), description: z.string() })
+const nodeSchema = reviewedChangeSchema
+  .unwrap()
+  .extend({ parents: z.array(z.string()).readonly() })
   .readonly();
 const revisionTemplate =
-  'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id()), "description" => description.first_line()}) ++ "\\n"';
+  'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id()), "description" => description, "author" => author.name(), "timestamp" => author.timestamp().format("%Y-%m-%dT%H:%M:%S%:z"), "hasConflict" => conflict}) ++ "\\n"';
 
 function diffArguments(snapshot: ReviewSnapshot): string[] {
   const comparison = snapshot.comparison;
@@ -72,6 +73,7 @@ export async function openReview(
   };
   let comparison: ReviewSnapshot["comparison"];
   let label = reviewTargetLabel(target);
+  let change: z.infer<typeof reviewedChangeSchema> | null = null;
   if (target.kind === "branch" || target.kind === "endpoints") {
     const from = await resolve(target.kind === "branch" ? "fork_point(main|@)" : target.from);
     const to = await resolve(target.kind === "branch" ? "@" : target.to);
@@ -113,9 +115,10 @@ export async function openReview(
     if (nodes.length === 0) throw new Error("The selected revset is empty.");
     if (nodes.length > 1000) throw new Error("Review at most 1,000 changes at a time.");
     comparison = { kind: "revisions", revisions: nodes.map((node) => node.commitId) };
+    if (nodes.length === 1) change = reviewedChangeSchema.parse(nodes[0]);
     label =
       nodes.length === 1
-        ? `${nodes[0].changeId.slice(0, 12)} · ${nodes[0].description || "(no description)"}`
+        ? `${nodes[0].changeId.slice(0, 12)} · ${nodes[0].description.split("\n")[0] || "(no description)"}`
         : target.kind === "selection"
           ? `${nodes.length} changes · ${nodes.at(-1)!.changeId.slice(0, 12)} → ${nodes[0].changeId.slice(0, 12)} (inclusive)`
           : `${nodes.length} changes · ${reviewTargetLabel(target)}`;
@@ -125,6 +128,7 @@ export async function openReview(
     operation,
     comparison,
     label,
+    change,
   });
   return { snapshot, files: await changedFiles(root, snapshot, signal) };
 }

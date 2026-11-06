@@ -55,7 +55,7 @@ moves the comparison. The server's jj output limit is 16 MiB and the row adapter
 
 Validation on this branch:
 
-- Paseo 0.15.2's actual `compileDirectoryPlugin` accepts both bundles. The client bundle is about 87
+- Paseo 0.15.2's actual `compileDirectoryPlugin` accepts both bundles. The client bundle is about 82
   KB, including History, the vendored pane, and embedded styles.
 - A headless Chromium harness evaluated those compiled bundles, supplied SDK context/RPC shims, and
   mounted the registered panel with React/React DOM 19.1.0. This is browser evidence, not a claim of
@@ -72,12 +72,13 @@ Validation on this branch:
 - Real-jj tests cover snapshot stability after rewrites, file metadata, literal names, additions,
   deletions, renames, EOF markers, binaries, and repository/path validation.
 
-November 6 follow-up: comparison modes are visible/editable, and History can open a selected change
-or Shift-click range in the review workspace tab. The SDK's `openPanel` has no initial-state
-argument, so a client-owned store hands requests to the tab, scoped by host and workspace. Request
-IDs allow reopening an identical selection to refresh it; accepted requests persist in the tab's own
-state. The browser harness also exercised the registered History and Review components together,
-including actual React Native Web presses, shift selection, and From/To submission.
+November 6 follow-up: the standalone sidebar has been replaced by a change list inside the review
+workspace tab, to the left of the changed files. Clicking a row or Shift-clicking a linear range
+switches the diff immediately; Branch changes returns to the fork-point comparison. A single
+change's full description and metadata come from the pinned operation and appear above the code.
+Other comparisons use the centered comparison caption. The selection dialog contains the comparison
+editor and pinned IDs. The change list and review share one repository and
+comparison state; the former cross-panel request store is removed.
 
 Paseo's root interface-font rule overrides ordinary DOM descendants, which explained the initial
 non-monospace rendering. Code now carries Paseo's `data-pmono` marker and uses the existing

@@ -36,6 +36,14 @@ export function reviewTargetLabel(target: ReviewTarget): string {
         : `Change ${target.anchor.changeId.slice(0, 12)}`;
   }
 }
+export const reviewedChangeSchema = revisionSchema
+  .extend({
+    description: z.string(),
+    author: z.string(),
+    timestamp: z.string(),
+    hasConflict: z.boolean(),
+  })
+  .readonly();
 const comparisonSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("endpoints"), from: commitId, to: commitId }).readonly(),
   z
@@ -51,6 +59,7 @@ export const reviewSnapshotSchema = z
     operation: z.string().regex(/^[0-9a-f]{128}$/),
     comparison: comparisonSchema,
     label: z.string(),
+    change: reviewedChangeSchema.nullable().default(null),
   })
   .readonly();
 export type ReviewSnapshot = z.infer<typeof reviewSnapshotSchema>;

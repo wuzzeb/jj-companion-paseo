@@ -249,3 +249,31 @@ test("selected changes follow unambiguous rewrites and merged-parent baselines",
   assert.equal(view.rows[14].cells[0].spans[0].text, "line 15");
   assert.equal(view.rows[14].cells[1].spans[0].text, "merge edit");
 });
+
+test("single-change details stay with the pinned diff, while comparisons have no change description", async (t) => {
+  const { root } = await fixture(t);
+  await writeFile(join(root, "review.txt"), "original contents\n");
+  await jj(root, "describe", "-m", "Review title\n\nDetailed explanation.\nSecond line.");
+  const review = await openReview(root, { kind: "change", revision: "@" });
+  const change = review.snapshot.change!;
+  assert.equal(change.description, "Review title\n\nDetailed explanation.\nSecond line.\n");
+  assert.equal(change.author, "Review Test");
+  assert.match(change.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(change.hasConflict, false);
+  assert.deepEqual(review.snapshot.comparison, { kind: "revisions", revisions: [change.commitId] });
+  assert.equal(review.snapshot.label, `${change.changeId.slice(0, 12)} · Review title`);
+  await writeFile(join(root, "review.txt"), "rewritten contents\n");
+  await jj(root, "describe", "-m", "Rewritten title");
+  assert.deepEqual(
+    text((await readReviewFile(root, { snapshot: review.snapshot, path: "review.txt" })).view, 1),
+    ["original contents"],
+  );
+  const refreshed = await openReview(root, { kind: "selection", anchor: change });
+  assert.equal(refreshed.snapshot.change?.description, "Rewritten title\n");
+  assert.notEqual(refreshed.snapshot.change?.commitId, change.commitId);
+  assert.equal((await openReview(root)).snapshot.change, null);
+  assert.equal(
+    (await openReview(root, { kind: "endpoints", from: "main", to: "@" })).snapshot.change,
+    null,
+  );
+});

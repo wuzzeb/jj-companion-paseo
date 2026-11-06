@@ -9,6 +9,7 @@ export const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("branch") }).readonly(),
   z.object({ kind: z.literal("endpoints"), from: expression, to: expression }).readonly(),
   z.object({ kind: z.literal("revisions"), revset: expression }).readonly(),
+  z.object({ kind: z.literal("change"), revision: expression }).readonly(),
   z
     .object({
       kind: z.literal("selection"),
@@ -27,6 +28,8 @@ export function reviewTargetLabel(target: ReviewTarget): string {
       return `${target.from} → ${target.to}`;
     case "revisions":
       return `Changes in ${target.revset}`;
+    case "change":
+      return `Change ${target.revision}`;
     case "selection":
       return target.end
         ? `Changes ${target.anchor.changeId.slice(0, 12)} ↔ ${target.end.changeId.slice(0, 12)} (inclusive)`

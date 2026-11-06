@@ -22,9 +22,11 @@ import { linearRange } from "../shared/linear-range.js";
 const fileTemplate =
   'json({"path" => self.path(), "oldPath" => self.source().path(), "status" => self.status_char()}) ++ "\\n"';
 const filesSchema = z.array(reviewFileSchema).readonly();
-const nodeSchema = revisionSchema.extend({ parents: z.array(z.string()).readonly() }).readonly();
+const nodeSchema = revisionSchema
+  .extend({ parents: z.array(z.string()).readonly(), description: z.string() })
+  .readonly();
 const revisionTemplate =
-  'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id())}) ++ "\\n"';
+  'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id()), "description" => description.first_line()}) ++ "\\n"';
 
 function diffArguments(snapshot: ReviewSnapshot): string[] {
   const comparison = snapshot.comparison;
@@ -69,15 +71,18 @@ export async function openReview(
     return nodes[0].commitId;
   };
   let comparison: ReviewSnapshot["comparison"];
+  let label = reviewTargetLabel(target);
   if (target.kind === "branch" || target.kind === "endpoints") {
     const from = await resolve(target.kind === "branch" ? "fork_point(main|@)" : target.from);
     const to = await resolve(target.kind === "branch" ? "@" : target.to);
     comparison = { kind: "endpoints", from, to };
   } else {
-    let revisions: ReadonlyArray<string>;
-    if (target.kind === "revisions")
-      revisions = (await read(target.revset)).map((node) => node.commitId);
-    else {
+    let nodes: ReadonlyArray<z.infer<typeof nodeSchema>>;
+    if (target.kind === "revisions" || target.kind === "change") {
+      nodes = await read(target.kind === "change" ? target.revision : target.revset);
+      if (target.kind === "change" && nodes.length !== 1)
+        throw new Error("Enter exactly one change, or use Changes (revset) for multiple changes.");
+    } else {
       const targets = target.end ? [target.anchor, target.end] : [target.anchor];
       const candidates = await read(
         `all() & (${targets.map((revision) => `change_id("${revision.changeId}")`).join(" | ")})`,
@@ -91,7 +96,7 @@ export async function openReview(
           "A selected change is missing or divergent. Refresh history and select it again.",
         );
       });
-      if (resolved.length === 1) revisions = [resolved[0].commitId];
+      if (resolved.length === 1) nodes = resolved;
       else {
         const [anchor, end] = resolved;
         const interval = await read(
@@ -102,18 +107,24 @@ export async function openReview(
           throw new Error(
             "Select changes on the same linear stack. Ranges cannot cross branches or merges.",
           );
-        revisions = path.map((node) => node.commitId);
+        nodes = path;
       }
     }
-    if (revisions.length === 0) throw new Error("The selected revset is empty.");
-    if (revisions.length > 1000) throw new Error("Review at most 1,000 changes at a time.");
-    comparison = { kind: "revisions", revisions };
+    if (nodes.length === 0) throw new Error("The selected revset is empty.");
+    if (nodes.length > 1000) throw new Error("Review at most 1,000 changes at a time.");
+    comparison = { kind: "revisions", revisions: nodes.map((node) => node.commitId) };
+    label =
+      nodes.length === 1
+        ? `${nodes[0].changeId.slice(0, 12)} · ${nodes[0].description || "(no description)"}`
+        : target.kind === "selection"
+          ? `${nodes.length} changes · ${nodes.at(-1)!.changeId.slice(0, 12)} → ${nodes[0].changeId.slice(0, 12)} (inclusive)`
+          : `${nodes.length} changes · ${reviewTargetLabel(target)}`;
   }
   const snapshot = reviewSnapshotSchema.parse({
     root,
     operation,
     comparison,
-    label: reviewTargetLabel(target),
+    label,
   });
   return { snapshot, files: await changedFiles(root, snapshot, signal) };
 }

@@ -179,12 +179,28 @@ test("endpoint and revset comparisons pin the requested revisions instead of the
     from: first.commitId,
     to: second.commitId,
   });
+  const single = await openReview(root, { kind: "change", revision: first.changeId });
+  assert.equal(single.snapshot.label, `${first.changeId.slice(0, 12)} · first`);
+  assert.deepEqual(
+    single.files.map((file) => file.path),
+    ["first.txt"],
+  );
+  await assert.rejects(
+    openReview(root, { kind: "change", revision: `${first.changeId} | ${second.changeId}` }),
+    /exactly one change/,
+  );
   for (const target of [
     { kind: "revisions" as const, revset: `${first.changeId}::${second.changeId}` },
     { kind: "selection" as const, anchor: first, end: second },
     { kind: "selection" as const, anchor: second, end: first },
   ]) {
     const review = await openReview(root, target);
+    if (target.kind === "selection") {
+      assert.equal(
+        review.snapshot.label,
+        `2 changes · ${first.changeId.slice(0, 12)} → ${second.changeId.slice(0, 12)} (inclusive)`,
+      );
+    }
     assert.deepEqual(
       review.files.map((file) => file.path),
       ["first.txt", "second.txt"],
@@ -224,6 +240,7 @@ test("selected changes follow unambiguous rewrites and merged-parent baselines",
   lines[14] = "merge edit\n";
   await writeFile(join(root, "sample.txt"), lines.join(""));
   const review = await openReview(root, { kind: "selection", anchor: merge });
+  assert.equal(review.snapshot.label, `${merge.changeId.slice(0, 12)} · merge`);
   const view = (await readReviewFile(root, { snapshot: review.snapshot, path: "sample.txt" })).view;
   assert.equal(view.added, 1);
   assert.equal(view.removed, 1);

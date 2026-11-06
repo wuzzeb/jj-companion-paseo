@@ -92,13 +92,15 @@ repositories and ordinary directories show an empty state.
 
 On the experimental `jayjay-review-tab` branch, use **Open jj review** in Paseo's command center to
 open a **jj Review** workspace tab on desktop/web. The default is `fork_point(main|@)` → `@`. The
-comparison controls also accept a change/revset (jj's `diff -r` semantics) or explicit **From** and
-**To** revisions. Click **Open diff** to apply edits. The header describes the active comparison;
-expand **Pinned revisions** to see the exact commits. A repository selector, changed-file list, and
-JayJay's side-by-side `DiffPane` provide file navigation. Click a collapsed context row or **Show
-all** to reveal the complete file; **Collapse context** hides unchanged regions again. Mouse
-selections copy one column without line numbers. Code uses Paseo's configured monospace/terminal
-font, including live preference changes; interface labels keep the interface font.
+single toolbar centers the active comparison, including the message for a single change. **Select
+Changes** opens a dialog for branch changes, a single change, a revset (jj's `diff -r` semantics),
+or explicit **From** and **To** revisions. Click **Open diff** to apply edits; Cancel or Escape
+keeps the current comparison. Expand **Current pinned revisions** inside the dialog to see the exact
+commits. A repository selector, changed-file list, and JayJay's side-by-side `DiffPane` provide file
+navigation. Click a collapsed context row or **Show all** to reveal the complete file; **Collapse
+context** hides unchanged regions again. Mouse selections copy one column without line numbers. Code
+uses Paseo's configured monospace/terminal font, including live preference changes; interface labels
+keep the interface font.
 
 History's top review icon opens the branch comparison. Select a row and click the review icon beside
 its bookmark button to review one change. Shift-click another row for an inclusive linear range,

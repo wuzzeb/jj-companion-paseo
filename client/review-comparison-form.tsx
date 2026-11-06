@@ -3,6 +3,7 @@ import type { ReviewTarget } from "../shared/review.js";
 
 function selectedRevset(target: ReviewTarget): string {
   if (target.kind === "revisions") return target.revset;
+  if (target.kind === "change") return target.revision;
   if (target.kind !== "selection") return "@";
   const anchor = `change_id("${target.anchor.changeId}")`;
   return target.end ? `${anchor}::change_id("${target.end.changeId}")` : anchor;
@@ -12,10 +13,12 @@ export function ReviewComparisonForm({
   target,
   busy,
   onOpen,
+  onCancel,
 }: {
   readonly target: ReviewTarget;
   readonly busy: boolean;
   readonly onOpen: (target: ReviewTarget) => void;
+  readonly onCancel: () => void;
 }) {
   const [mode, setMode] = useState(target.kind);
   const [from, setFrom] = useState(
@@ -23,12 +26,21 @@ export function ReviewComparisonForm({
   );
   const [to, setTo] = useState(target.kind === "endpoints" ? target.to : "@");
   const [revset, setRevset] = useState(selectedRevset(target));
+  const [change, setChange] = useState(
+    target.kind === "change"
+      ? target.revision
+      : target.kind === "selection"
+        ? target.anchor.changeId
+        : "@",
+  );
   const valid =
     mode === "endpoints"
       ? !!from.trim() && !!to.trim()
       : mode === "revisions"
         ? !!revset.trim()
-        : true;
+        : mode === "change"
+          ? !!change.trim()
+          : true;
   return (
     <form
       className="review-comparison-form"
@@ -40,9 +52,11 @@ export function ReviewComparisonForm({
             ? { kind: mode, from: from.trim(), to: to.trim() }
             : mode === "revisions"
               ? { kind: mode, revset: revset.trim() }
-              : mode === "branch"
-                ? { kind: mode }
-                : target,
+              : mode === "change"
+                ? { kind: mode, revision: change.trim() }
+                : mode === "branch"
+                  ? { kind: mode }
+                  : target,
         );
       }}
     >
@@ -54,6 +68,7 @@ export function ReviewComparisonForm({
           onChange={(event) => setMode(event.target.value as ReviewTarget["kind"])}
         >
           <option value="branch">Branch changes</option>
+          <option value="change">Single change</option>
           <option value="revisions">Changes (revset)</option>
           <option value="endpoints">Compare revisions</option>
           {target.kind === "selection" ? (
@@ -63,7 +78,7 @@ export function ReviewComparisonForm({
       </label>
       {mode === "endpoints" ? (
         <>
-          <label className="review-expression">
+          <label>
             From
             <input
               data-pmono=""
@@ -74,7 +89,7 @@ export function ReviewComparisonForm({
               spellCheck={false}
             />
           </label>
-          <label className="review-expression">
+          <label>
             To
             <input
               data-pmono=""
@@ -86,8 +101,20 @@ export function ReviewComparisonForm({
             />
           </label>
         </>
+      ) : mode === "change" ? (
+        <label>
+          Change
+          <input
+            data-pmono=""
+            aria-label="Change revision"
+            value={change}
+            maxLength={4096}
+            onChange={(event) => setChange(event.target.value)}
+            spellCheck={false}
+          />
+        </label>
       ) : mode === "revisions" ? (
-        <label className="review-expression">
+        <label>
           Revset
           <input
             data-pmono=""
@@ -107,9 +134,14 @@ export function ReviewComparisonForm({
       ) : (
         <span className="review-expression-hint">fork_point(main|@) → @</span>
       )}
-      <button type="submit" disabled={busy || !valid}>
-        Open diff
-      </button>
+      <div className="review-dialog-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" disabled={busy || !valid}>
+          Open diff
+        </button>
+      </div>
     </form>
   );
 }

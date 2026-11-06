@@ -23,7 +23,7 @@ import { DiffPane } from "./vendor/jayjay/components/diff/DiffPane.js";
 import { diffCss } from "./vendor/jayjay/styles.js";
 import { reviewCss } from "./review-styles.js";
 import { collapseContext } from "./review-context.js";
-import { ReviewComparisonForm } from "./review-comparison-form.js";
+import { ReviewComparisonDialog } from "./review-comparison-dialog.js";
 import type { ReviewNavigation, ReviewRequest } from "./review-navigation.js";
 
 const stateSchema = z
@@ -85,8 +85,10 @@ function Review({
     requestId: null,
   });
   const waiting = request !== null && request.id !== state.requestId;
+  const [selecting, setSelecting] = useState(false);
   useEffect(() => {
-    if (request && waiting)
+    if (request && waiting) {
+      setSelecting(false);
       setState({
         repository: request.repository,
         path: null,
@@ -94,6 +96,7 @@ function Review({
         generation: state.generation + 1,
         requestId: request.id,
       });
+    }
   }, [request, waiting, state.generation, setState]);
   const [copySide, setCopySide] = useState<"old" | "new" | null>(null);
   const listRepositories = useRpc(repositoriesRpc);
@@ -109,7 +112,7 @@ function Review({
     : ".";
   const comparison = useQuery({
     queryKey: [
-      "jj-review-v2",
+      "jj-review-v3",
       host.id,
       workspaceId,
       directory,
@@ -162,53 +165,55 @@ function Review({
     >
       <style>{diffCss + reviewCss}</style>
       <header className="review-toolbar">
-        <span className="review-title">Review</span>
-        {repositories.data && repositories.data.length > 1 ? (
-          <select
-            aria-label="Review repository"
-            value={repository}
-            onChange={(event) => setState({ ...state, repository: event.target.value, path: null })}
-          >
-            {repositories.data.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.label}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span>{repositories.data?.[0]?.label}</span>
-        )}
+        <div className="review-toolbar-start">
+          <span className="review-title">Review</span>
+          {repositories.data && repositories.data.length > 1 ? (
+            <select
+              aria-label="Review repository"
+              value={repository}
+              onChange={(event) =>
+                setState({ ...state, repository: event.target.value, path: null })
+              }
+            >
+              {repositories.data.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
         <span
           className="review-current"
           title={data?.snapshot.label ?? reviewTargetLabel(state.target)}
         >
           {data?.snapshot.label ?? reviewTargetLabel(state.target)}
         </span>
-        <button
-          onClick={refresh}
-          disabled={comparison.isFetching || repositories.isFetching}
-          aria-label="Refresh review snapshot"
-        >
-          {comparison.isFetching ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="review-toolbar-actions">
+          <button
+            onClick={refresh}
+            disabled={comparison.isFetching || repositories.isFetching}
+            aria-label="Refresh review snapshot"
+          >
+            {comparison.isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+          <button onClick={() => setSelecting(true)} aria-haspopup="dialog">
+            Select Changes
+          </button>
+        </div>
       </header>
-      <ReviewComparisonForm
-        key={`${state.generation}:${JSON.stringify(state.target)}`}
-        target={state.target}
-        busy={waiting || comparison.isFetching}
-        onOpen={(target: ReviewTarget) =>
-          setState({ ...state, target, path: null, generation: state.generation + 1 })
-        }
-      />
-      {data ? (
-        <details className="review-pinned">
-          <summary>Pinned revisions</summary>
-          <code data-pmono="">
-            {data.snapshot.comparison.kind === "endpoints"
-              ? `${data.snapshot.comparison.from} → ${data.snapshot.comparison.to}`
-              : data.snapshot.comparison.revisions.join(" | ")}
-          </code>
-        </details>
+      {selecting ? (
+        <ReviewComparisonDialog
+          key={`${state.generation}:${JSON.stringify(state.target)}`}
+          target={state.target}
+          snapshot={data?.snapshot}
+          busy={waiting || comparison.isFetching}
+          onClose={() => setSelecting(false)}
+          onOpen={(target: ReviewTarget) => {
+            setSelecting(false);
+            setState({ ...state, target, path: null, generation: state.generation + 1 });
+          }}
+        />
       ) : null}
       {repositories.error || comparison.error ? (
         <div role="alert" className="review-refresh-error review-error">

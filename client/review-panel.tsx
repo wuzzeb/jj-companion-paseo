@@ -26,6 +26,7 @@ import { collapseContext } from "./review-context.js";
 import { inlineDiff } from "./review-layout.js";
 import { ReviewComparisonDialog } from "./review-comparison-dialog.js";
 import { ChangeList } from "./change-list.js";
+import { ReviewFiles } from "./review-files.js";
 import { historyLimit, maxHistoryLimit } from "../shared/history.js";
 
 const stateSchema = z
@@ -33,6 +34,7 @@ const stateSchema = z
     repository: repositorySelectionSchema.default("."),
     path: z.string().nullable().default(null),
     diffLayout: z.enum(["split", "inline"]).default("split"),
+    filesLayout: z.enum(["flat", "tree"]).default("flat"),
     target: reviewTargetSchema.default(branchReview),
     generation: z.number().int().nonnegative().default(0),
     historyLimit: z.number().int().min(historyLimit).max(maxHistoryLimit).default(historyLimit),
@@ -78,6 +80,7 @@ function Review({
     repository: ".",
     path: null,
     diffLayout: "split",
+    filesLayout: "flat",
     target: branchReview,
     generation: 0,
     historyLimit,
@@ -241,28 +244,19 @@ function Review({
         </aside>
         <div className="review-body">
           {data && data.files.length > 0 ? (
-            <nav className="review-files" aria-label="Changed files">
-              <div className="review-file-count">
-                {data.files.length} changed {data.files.length === 1 ? "file" : "files"}
-              </div>
-              {data.files.map((entry) => (
-                <button
-                  key={entry.path}
-                  className="review-file"
-                  data-status={entry.status}
-                  aria-pressed={entry.path === file?.path}
-                  title={
-                    entry.oldPath === entry.path ? entry.path : `${entry.oldPath} → ${entry.path}`
-                  }
-                  onClick={() => setState({ ...state, repository, path: entry.path })}
-                >
-                  <span className="review-status" aria-hidden="true">
-                    {entry.status}
-                  </span>
-                  <span>{entry.path}</span>
-                </button>
-              ))}
-            </nav>
+            <ReviewFiles
+              key={repository}
+              files={data.files}
+              layout={state.filesLayout}
+              selectedPath={file?.path ?? null}
+              onSelect={(path) => setState({ ...state, repository, path })}
+              onToggleLayout={() =>
+                setState({
+                  ...state,
+                  filesLayout: state.filesLayout === "flat" ? "tree" : "flat",
+                })
+              }
+            />
           ) : null}
           <div className="review-document">
             {data?.snapshot.change ? <ChangeDescription change={data.snapshot.change} /> : null}

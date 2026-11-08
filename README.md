@@ -104,6 +104,10 @@ numbers, and stay within one column in side-by-side mode. Code uses
 Paseo's configured monospace/terminal font, including live preference changes; interface labels keep
 the interface font.
 
+Use **Tree** / **Flat** above the changed files to switch between full paths and a collapsible
+directory tree. The choice is saved with the review tab. Tree folders start expanded; file status,
+selection, and rename tooltips are available in both views.
+
 Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and the
 comparison's concrete commit IDs. Browsing files and revealing context keep that snapshot, so agent
 changes appear only after Refresh. Syntax highlighting uses Paseo's language parsers and follows

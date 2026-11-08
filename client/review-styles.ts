@@ -31,10 +31,10 @@ export const reviewCss = `
 .paseo-jj-review :is(.review-toolbar, .review-comparison-dialog, .review-file-header, .review-files-header) :is(button, select) { font:inherit; color:inherit; background:var(--jj-surface); border:1px solid var(--jj-border); border-radius:5px; padding:5px 9px; cursor:pointer; }
 .paseo-jj-review :is(.review-toolbar, .review-comparison-dialog, .review-file-header, .review-files-header) button:hover, .paseo-jj-review .review-file:hover, .paseo-jj-review .review-directory > summary:hover { background:var(--review-hover); }
 .paseo-jj-review :focus-visible { outline:2px solid var(--jj-accent); outline-offset:-2px; }
-.paseo-jj-review .review-toolbar { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(320px,1fr); align-items:center; gap:12px; padding:8px 12px; border-bottom:1px solid var(--jj-border); }
+.paseo-jj-review .review-toolbar { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; padding:8px 12px; border-bottom:1px solid var(--jj-border); }
 .paseo-jj-review .review-toolbar-start, .paseo-jj-review .review-toolbar-actions { display:flex; align-items:center; gap:10px; min-width:0; }
 .paseo-jj-review .review-toolbar-actions { justify-self:end; white-space:nowrap; }
-.paseo-jj-review .review-title { font-weight:600; font-size:14px; }
+.paseo-jj-review .review-title { flex-shrink:0; white-space:nowrap; font-weight:600; font-size:14px; }
 .paseo-jj-review .review-toolbar select { min-width:0; max-width:280px; text-overflow:ellipsis; }
 .paseo-jj-review .review-current { color:var(--jj-muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
 .paseo-jj-review .review-comparison-dialog { width:min(520px, calc(100vw - 32px)); max-height:calc(100vh - 32px); padding:0; overflow:auto; border:1px solid var(--jj-border); border-radius:8px; color:var(--jj-ink); background:var(--jj-page); font:inherit; box-shadow:0 12px 40px #0006; }
@@ -51,7 +51,7 @@ export const reviewCss = `
 .paseo-jj-review .review-pinned code { display:block; font:11px/1.5 var(--jj-mono); }
 .paseo-jj-review .review-pinned[open] { max-height:140px; overflow:auto; }
 @media (max-width:800px) {
-  .paseo-jj-review .review-toolbar { grid-template-columns:auto minmax(0,1fr) auto; gap:8px; }
+  .paseo-jj-review .review-toolbar { gap:8px; }
   .paseo-jj-review .review-toolbar select { max-width:140px; }
 }
 .paseo-jj-review .jj-split-head { font-family:var(--paseo-ui-font, system-ui); }

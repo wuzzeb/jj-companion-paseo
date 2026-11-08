@@ -98,7 +98,9 @@ followed when resolving selected changes. Git-only repositories and ordinary dir
 empty state.
 
 Click a collapsed context row or **Show all** to reveal the complete file; **Collapse context**
-hides unchanged regions again. Mouse selections copy one column without line numbers. Code uses
+hides unchanged regions again. Use **Inline** / **Side by side** in the file header to toggle the
+diff layout; the choice is saved with the review tab. Mouse selections copy code without line
+numbers, and stay within one column in side-by-side mode. Code uses
 Paseo's configured monospace/terminal font, including live preference changes; interface labels keep
 the interface font.
 

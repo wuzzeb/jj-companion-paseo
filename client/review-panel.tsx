@@ -23,6 +23,7 @@ import { DiffPane } from "./vendor/jayjay/components/diff/DiffPane.js";
 import { diffCss } from "./vendor/jayjay/styles.js";
 import { reviewCss } from "./review-styles.js";
 import { collapseContext } from "./review-context.js";
+import { inlineDiff } from "./review-layout.js";
 import { ReviewComparisonDialog } from "./review-comparison-dialog.js";
 import { ChangeList } from "./change-list.js";
 import { historyLimit, maxHistoryLimit } from "../shared/history.js";
@@ -31,6 +32,7 @@ const stateSchema = z
   .object({
     repository: repositorySelectionSchema.default("."),
     path: z.string().nullable().default(null),
+    diffLayout: z.enum(["split", "inline"]).default("split"),
     target: reviewTargetSchema.default(branchReview),
     generation: z.number().int().nonnegative().default(0),
     historyLimit: z.number().int().min(historyLimit).max(maxHistoryLimit).default(historyLimit),
@@ -75,6 +77,7 @@ function Review({
   const [tabState, setState] = useTabState(tab, stateSchema, {
     repository: ".",
     path: null,
+    diffLayout: "split",
     target: branchReview,
     generation: 0,
     historyLimit,
@@ -147,7 +150,9 @@ function Review({
       className="paseo-jj-review jayjay-review"
       style={variables}
       data-copy-side={copySide ?? undefined}
+      data-diff-layout={state.diffLayout}
       onPointerDownCapture={(event) => {
+        if (state.diffLayout !== "split") return;
         const target =
           event.target instanceof Element ? event.target.closest(".jj-diff-cell") : null;
         const side = target ? (target.previousElementSibling ? "new" : "old") : null;
@@ -282,6 +287,14 @@ function Review({
                 repository={repository}
                 snapshot={data.snapshot}
                 file={file}
+                split={state.diffLayout === "split"}
+                onToggleLayout={() => {
+                  setCopySide(null);
+                  setState({
+                    ...state,
+                    diffLayout: state.diffLayout === "split" ? "inline" : "split",
+                  });
+                }}
               />
             ) : null}
           </div>
@@ -317,12 +330,16 @@ function FilePane({
   repository,
   snapshot,
   file,
+  split,
+  onToggleLayout,
 }: {
   readonly hostId: string;
   readonly workspaceId: string;
   readonly repository: string;
   readonly snapshot: ReviewSnapshot;
   readonly file: ReviewFile;
+  readonly split: boolean;
+  readonly onToggleLayout: () => void;
 }) {
   const read = useRpc(reviewFileRpc);
   const [showAll, setShowAll] = useState(false);
@@ -337,7 +354,11 @@ function FilePane({
   const complete = query.data?.view;
   const collapsed = useMemo(() => (complete ? collapseContext(complete) : undefined), [complete]);
   const hasContext = collapsed?.rows.some((row) => row.cells[0]?.style === "separator");
-  const view = showAll ? complete : collapsed;
+  const contextView = showAll ? complete : collapsed;
+  const view = useMemo(
+    () => (contextView && !split ? inlineDiff(contextView) : contextView),
+    [contextView, split],
+  );
   return (
     <section className="review-file-pane" aria-label={`Diff for ${file.path}`}>
       <div className="review-file-header">
@@ -354,6 +375,13 @@ function FilePane({
             {showAll ? "Collapse context" : "Show all"}
           </button>
         ) : null}
+        <button
+          onClick={onToggleLayout}
+          aria-label={split ? "Show inline diff" : "Show side-by-side diff"}
+          title={split ? "Show inline diff" : "Show side-by-side diff"}
+        >
+          {split ? "Inline" : "Side by side"}
+        </button>
       </div>
       {query.error ? (
         <div role="alert" className="review-message review-error">
@@ -364,7 +392,7 @@ function FilePane({
       {query.data?.notice ? <div className="review-notice">{query.data.notice}</div> : null}
       {view && view.rows.length > 0 ? (
         <div className="review-code" data-pmono="">
-          <DiffPane view={view} split showAll={() => setShowAll(true)} labels={labels} />
+          <DiffPane view={view} split={split} showAll={() => setShowAll(true)} labels={labels} />
         </div>
       ) : null}
     </section>

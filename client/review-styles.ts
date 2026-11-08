@@ -86,8 +86,8 @@ export const reviewCss = `
 .paseo-jj-review .review-refresh-error { padding:9px 14px; border-bottom:1px solid var(--jj-border); }
 .paseo-jj-review .jj-line-number { flex-basis:50px; }
 .paseo-jj-review .jj-diff-cell code { user-select:text; }
-.paseo-jj-review[data-copy-side=old] .jj-diff-cell:nth-child(2) code,
-.paseo-jj-review[data-copy-side=new] .jj-diff-cell:first-child code { user-select:none; }
+.paseo-jj-review[data-diff-layout=split][data-copy-side=old] .jj-diff-cell:nth-child(2) code,
+.paseo-jj-review[data-diff-layout=split][data-copy-side=new] .jj-diff-cell:first-child code { user-select:none; }
 ${Object.entries(syntaxFallbacks)
   .map(
     ([role, fallback]) =>

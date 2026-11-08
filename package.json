@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@getpaseo/client": "0.15.0",
+    "@getpaseo/highlight": "0.15.3",
     "@getpaseo/plugin": "0.15.0",
     "@getpaseo/protocol": "0.15.0",
     "@tanstack/react-query": "^5.104.5",

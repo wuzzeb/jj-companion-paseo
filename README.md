@@ -104,8 +104,10 @@ the interface font.
 
 Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and the
 comparison's concrete commit IDs. Browsing files and revealing context keep that snapshot, so agent
-changes appear only after Refresh. This prototype shows plain text without syntax or word
-highlighting. Binary files and path/permission-only changes show notices. Comments and review marks
+changes appear only after Refresh. Syntax highlighting uses Paseo's language parsers and follows
+its configured syntax colors live. Unsupported languages and files over the highlighter's 768 KiB
+source budget per side use plain text. Word highlighting is not included.
+Binary files and path/permission-only changes show notices. Comments and review marks
 are not included. Files are limited to 20,000 diff lines and jj's 16 MiB output limit; revsets may
 select up to 1,000 changes.
 

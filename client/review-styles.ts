@@ -1,3 +1,30 @@
+import type { HighlightStyle } from "@getpaseo/highlight";
+
+// Unistyles exposes the live syntax palette on the document root. Older hosts
+// without these variables use the plugin's semantic theme colors instead.
+const syntaxFallbacks = {
+  keyword: "--jj-accent",
+  comment: "--jj-muted",
+  string: "--jj-added-ink",
+  number: "--jj-accent",
+  literal: "--jj-accent",
+  function: "--jj-accent",
+  definition: "--jj-ink",
+  class: "--jj-accent",
+  type: "--jj-accent",
+  tag: "--jj-accent",
+  attribute: "--jj-accent",
+  property: "--jj-ink",
+  variable: "--jj-ink",
+  operator: "--jj-ink",
+  punctuation: "--jj-ink",
+  regexp: "--jj-added-ink",
+  escape: "--jj-accent",
+  meta: "--jj-muted",
+  heading: "--jj-accent",
+  link: "--jj-accent",
+} as const satisfies Readonly<Record<HighlightStyle, string>>;
+
 export const reviewCss = `
 .paseo-jj-review { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; color:var(--jj-ink); background:var(--jj-page); font:12px/1.5 system-ui,sans-serif; }
 .paseo-jj-review, .paseo-jj-review * { box-sizing:border-box; }
@@ -61,4 +88,10 @@ export const reviewCss = `
 .paseo-jj-review .jj-diff-cell code { user-select:text; }
 .paseo-jj-review[data-copy-side=old] .jj-diff-cell:nth-child(2) code,
 .paseo-jj-review[data-copy-side=new] .jj-diff-cell:first-child code { user-select:none; }
+${Object.entries(syntaxFallbacks)
+  .map(
+    ([role, fallback]) =>
+      `.paseo-jj-review .jj-token-paseo-${role} { color:var(--colors-syntax-${role}, var(${fallback})); }`,
+  )
+  .join("\n")}
 `;

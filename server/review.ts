@@ -17,6 +17,7 @@ import {
 import { jsonLines, runJj } from "./jj.js";
 import { resolveRepository } from "./repository.js";
 import { patchToView } from "./review-patch.js";
+import { highlightReview } from "./review-highlight.js";
 import { linearRange } from "../shared/linear-range.js";
 
 const fileTemplate =
@@ -142,8 +143,8 @@ export async function readReviewFile(
   if ((await realpath(root)) !== snapshot.root)
     throw new Error("The repository changed. Refresh the review.");
   const files = await changedFiles(root, snapshot, signal);
-  if (!files.some((file) => file.path === input.path))
-    throw new Error("This file is not in the pinned review.");
+  const file = files.find((file) => file.path === input.path);
+  if (!file) throw new Error("This file is not in the pinned review.");
   const patch = await runJj(
     root,
     [
@@ -156,7 +157,7 @@ export async function readReviewFile(
     ],
     { operation: snapshot.operation, signal },
   );
-  const view = patchToView(patch);
+  const view = await highlightReview(patchToView(patch), file, signal);
   return {
     view,
     notice: /^(?:Binary files |Binary file )/m.test(patch)

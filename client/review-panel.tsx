@@ -168,7 +168,7 @@ function Review({
       <style>{diffCss + reviewCss}</style>
       <header className="review-toolbar">
         <div className="review-toolbar-start">
-          <span className="review-title">Review</span>
+          <span className="review-title">jj companion</span>
           {repositories.data && repositories.data.length > 1 ? (
             <select
               aria-label="Review repository"

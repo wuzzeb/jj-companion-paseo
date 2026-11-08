@@ -4,7 +4,7 @@ import { ReviewPanel } from "./client/review-panel.js";
 export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
     id: "review",
-    title: "jj Review",
+    title: "jj companion",
     icon: "GitCompareArrows",
     locations: ["workspace"],
     Component: ReviewPanel,

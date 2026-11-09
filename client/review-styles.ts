@@ -69,6 +69,8 @@ export const reviewCss = `
 .paseo-jj-review .review-file-header { display:flex; align-items:center; gap:8px; min-height:36px; padding:5px 10px; border-bottom:1px solid var(--jj-border); }
 .paseo-jj-review .review-path { flex:1; min-width:0; overflow-wrap:anywhere; font-family:var(--jj-mono); }
 .paseo-jj-review .review-stats { color:var(--jj-muted); white-space:nowrap; font-family:var(--jj-mono); }
+.paseo-jj-review .review-stats-added { color:var(--jj-added-ink); }
+.paseo-jj-review .review-stats-removed { color:var(--jj-removed-ink); }
 .paseo-jj-review .review-code { flex:1; min-height:0; overflow:auto; }
 .paseo-jj-review .review-message { padding:20px; color:var(--jj-muted); overflow-wrap:anywhere; }
 .paseo-jj-review .review-error { color:var(--jj-removed-ink); }

@@ -337,7 +337,8 @@ function FilePane({
         </span>
         {complete ? (
           <span className="review-stats">
-            +{complete.added} −{complete.removed}
+            <span className="review-stats-added">+{complete.added}</span>{" "}
+            <span className="review-stats-removed">−{complete.removed}</span>
           </span>
         ) : null}
         {hasContext ? (

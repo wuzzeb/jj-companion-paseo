@@ -14,7 +14,7 @@ export function BookmarkChip({
     <View
       testID={`jj-bookmark-${label}`}
       style={{
-        backgroundColor: theme.colors.surface1,
+        backgroundColor: bookmark.conflict ? theme.colors.surface1 : theme.colors.accent,
         paddingHorizontal: 5,
         paddingVertical: 2,
         borderRadius: 4,
@@ -25,8 +25,9 @@ export function BookmarkChip({
       <Text
         numberOfLines={1}
         style={{
-          color: bookmark.conflict ? theme.colors.statusDanger : theme.colors.foreground,
+          color: bookmark.conflict ? theme.colors.statusDanger : theme.colors.accentForeground,
           fontSize: 10,
+          fontWeight: "500",
         }}
       >
         {label}

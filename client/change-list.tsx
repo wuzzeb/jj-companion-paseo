@@ -295,9 +295,10 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
     },
     conflictBadge: { color: colors.statusDanger, fontSize: 10 },
     bookmark: {
-      color: colors.foreground,
-      backgroundColor: colors.surface1,
+      color: colors.accentForeground,
+      backgroundColor: colors.accent,
       fontSize: 10,
+      fontWeight: "500",
       paddingHorizontal: 5,
       paddingVertical: 1,
       borderRadius: 4,

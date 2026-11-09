@@ -308,6 +308,70 @@ test("tracking/untracking and rename/delete act on exact bookmarks", async (t) =
   );
 });
 
+test("dialog Tug moves an exact bookmark from another stack to the workspace tip and snapshots dirty work", async (t) => {
+  const { repo } = await repository(t);
+  await feature(repo);
+  await jj(repo, "new", "main", "-m", "other stack");
+  await writeFile(join(repo, "other.txt"), "other stack\n");
+  await jj(repo, "new");
+  const before = await readBookmarkState(repo);
+  assert.equal(before.usesParent, true);
+  assert.deepEqual(before.candidates, []);
+  const action: BookmarkAction = {
+    kind: "move",
+    name: "feature",
+    expectedTargets: local(before, "feature").targets,
+    target: workspace(before),
+  };
+  await runBookmarkAction(repo, action);
+  const moved = await readBookmarkState(repo);
+  assert.deepEqual(local(moved, "feature").targets, [before.target.commitId]);
+  assert.deepEqual(local(moved, "main").targets, local(before, "main").targets);
+  assert.equal(moved.workingCopy.changeId, before.workingCopy.changeId);
+  await assert.rejects(runBookmarkAction(repo, action), /moved since/);
+
+  await writeFile(join(repo, "dirty.txt"), "pending work\n");
+  const dirtyAction: BookmarkAction = {
+    ...action,
+    expectedTargets: local(moved, "feature").targets,
+  };
+  await runBookmarkAction(repo, dirtyAction);
+  const dirty = await readBookmarkState(repo);
+  assert.equal(dirty.usesParent, false);
+  assert.deepEqual(local(dirty, "feature").targets, [dirty.workingCopy.commitId]);
+  assert.equal(await runJj(repo, ["file", "show", "-r", "feature", "dirty.txt"]), "pending work\n");
+
+  await jj(repo, "new");
+  await assert.rejects(runBookmarkAction(repo, dirtyAction), /editing a different change/);
+});
+
+test("tracking a remote-only bookmark creates its local counterpart without moving the workspace", async (t) => {
+  const { repo } = await repository(t);
+  const state = await feature(repo);
+  await runBookmarkAction(repo, { kind: "push", remote: "origin", subject: workspace(state) });
+  await jj(repo, "bookmark", "forget", "feature");
+  const before = await readBookmarkState(repo);
+  assert.equal(
+    before.bookmarks.some((bookmark) => bookmark.name === "feature" && bookmark.remote === null),
+    false,
+  );
+  assert.equal(
+    before.bookmarks.find((bookmark) => bookmark.name === "feature" && bookmark.remote === "origin")
+      ?.tracked,
+    false,
+  );
+
+  await runBookmarkAction(repo, { kind: "track", name: "feature", remote: "origin" });
+  const tracked = await readBookmarkState(repo);
+  const remote = tracked.bookmarks.find(
+    (bookmark) => bookmark.name === "feature" && bookmark.remote === "origin",
+  );
+  assert.equal(remote?.tracked, true);
+  assert.deepEqual(local(tracked, "feature").targets, remote?.targets);
+  assert.deepEqual(local(tracked, "main"), local(before, "main"));
+  assert.deepEqual(tracked.workingCopy, before.workingCopy);
+});
+
 test("Fetch imports remote updates without rebasing the workspace", async (t) => {
   const { repo, remote } = await repository(t);
   const { stdout: base } = await execFileAsync("git", [

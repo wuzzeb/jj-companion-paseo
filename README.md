@@ -119,18 +119,17 @@ and pinned revision. Styles are embedded in JavaScript; no package installation,
 or nested checkout is required to load this branch. `tools/vendor-jayjay.mjs` regenerates the subset
 from a separate JayJay jj checkout when updating it.
 
-The change-list controls provide **Create bookmark**, **Tug**, **Push**, and **Fetch**. These
-shortcuts act on the workspace’s edited change (`@`), independently of the selected graph row. If
+The change-list controls provide **Bookmarks**, **Tug**, **Push**, and **Fetch**. Bookmark creation
+and Tug target the workspace’s edited change (`@`), independently of the selected graph row. If
 `@` is empty and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at
 `@`. Actions snapshot pending files before resolving the tip, so unsnapshotted work is included.
 
-With no branch bookmark, **Create bookmark** suggests the workspace name. Press Enter or choose
-**Create bookmark** to create it locally, then use **Push** after reviewing it. **Tug** advances the
-nearest bookmarked ancestor to the workspace tip. Automatic discovery excludes immutable and trunk
-bookmarks, so it does not pull `main` forward into a feature branch. The branch row shows the branch
+Use **Bookmarks** to create a local bookmark, then **Push** after reviewing it. The branch row’s
+**Tug** advances the nearest bookmarked ancestor to the workspace tip. Automatic discovery excludes
+immutable and trunk bookmarks, so it does not pull `main` forward into a feature branch. The branch row shows the branch
 bookmark with Diff, Tug, and Push on the right. If several names qualify, select the branch bookmark
 once for Tug and Push; neither action is enabled until a bookmark is selected. With no branch
-bookmark, the row offers Diff and creation instead. No `tug` alias is required.
+bookmark, the row offers Diff; create a bookmark in **Bookmarks**. No `tug` alias is required.
 
 **Push** publishes the bookmark at its current position; use Tug first to include newer changes. A
 first push automatically tracks the new remote bookmark. If a same-named remote bookmark already
@@ -138,18 +137,24 @@ exists and is untracked, Push tracks it first. If that imports a different local
 conflict, the operation stops for review instead of pushing a different target. **Fetch** runs
 `jj git fetch`, updating remote and tracked bookmarks without running a rebase. A single remote is
 selected automatically; choose one explicitly when the repository has multiple remotes. Fetch,
-**Manage Bookmarks**, and the Git remote selector appear together below History, above the branch
+**Bookmarks**, and the Git remote selector appear together below Changes, above the branch
 row.
 
-Click, right-click, or long-press a local bookmark chip to open a small Push menu for that exact
-bookmark. Drag a local bookmark chip onto another graph row to move it, including backwards and
-sideways. Remote bookmark labels are read-only. **Manage Bookmarks** lists local and remote
-bookmarks and provides Create and Push actions. The bookmark-plus icon above the change list creates
-a bookmark on that exact selected change. Rename, deletion, and tracking management can be done in a
-jj terminal.
+The change graph is for reviewing diffs: bookmark chips are passive labels, and clicking anywhere
+on a row, including its bookmarks, opens that change’s diff. Shift-click extends the selection.
+
+**Bookmarks** lists local and remote bookmarks in one dialog. Local rows offer **Tug** to move that
+specific bookmark to the current workspace’s tip, even from another stack, and **Push to** the
+selected remote. The dialog stays open while actions run and the list refreshes. Untracked remote
+rows offer **Track** for that exact bookmark and remote. With multiple remotes, choose the push
+destination inside the dialog; tracking always uses the remote named on its row.
+
+Type a name in the field at the bottom to reveal **Create**, or press Enter. Creation is local at
+the current workspace’s tip and keeps the entered name if it fails. Conflicted bookmarks, renaming,
+deletion, untracking, and moving to arbitrary revisions are left to the jj CLI.
 
 Bookmark operations are serialized across this plugin’s workspaces sharing the same jj repository.
-Stale bookmark positions and abandoned drop targets produce an error and refresh the view. Push and
+Stale bookmark positions and workspace changes produce an error and refresh the view. Push and
 Fetch run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
 Closing the panel does not cancel a job; reloading or disabling the plugin cancels pending work.
 Normal jj push checks remain enabled, including description, conflict, and remote-update checks.

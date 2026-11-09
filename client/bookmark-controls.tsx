@@ -1,28 +1,19 @@
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Icon, Modal, TextInput, ScrollView } from "@getpaseo/plugin/client/ui";
-import type { BookmarkAction, BookmarkTarget } from "../shared/bookmarks.js";
+import { Icon, Modal, ScrollView } from "@getpaseo/plugin/client/ui";
+import type { BookmarkAction } from "../shared/bookmarks.js";
 import type { useBookmarks } from "./use-bookmarks.js";
-import { BookmarkMenu, type BookmarkMenuTarget } from "./bookmark-menu.js";
+import { ActionButton } from "./action-button.js";
+import { BookmarksDialog } from "./bookmarks-dialog.js";
 
 export function BookmarkControls({
   actions,
   theme,
-  workspaceName,
-  menu,
-  setMenu,
-  createTarget,
-  setCreateTarget,
   onDiff,
 }: {
   readonly actions: ReturnType<typeof useBookmarks>;
   readonly theme: PluginTheme;
-  readonly workspaceName: string;
-  readonly menu: BookmarkMenuTarget | null;
-  readonly setMenu: (value: BookmarkMenuTarget | null) => void;
-  readonly createTarget: BookmarkTarget | null;
-  readonly setCreateTarget: (value: BookmarkTarget | null) => void;
   readonly onDiff: () => void;
 }) {
   const state = actions.state.data;
@@ -31,7 +22,6 @@ export function BookmarkControls({
   const [managerOpen, setManagerOpen] = useState(false);
   const [branchChoice, setBranchChoice] = useState<string | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);
-  const closeMenu = useCallback(() => setMenu(null), [setMenu]);
   const branch = state?.candidates.includes(branchChoice ?? "")
     ? branchChoice
     : state?.candidates.length === 1
@@ -42,9 +32,6 @@ export function BookmarkControls({
     : state?.remotes.length === 1
       ? state.remotes[0]
       : null;
-  const workspaceTarget = state
-    ? { kind: "workspace" as const, workingCopyChangeId: state.workingCopy.changeId }
-    : null;
   const run = (action: BookmarkAction) => {
     void actions.run(action).catch(() => {});
   };
@@ -126,7 +113,7 @@ export function BookmarkControls({
               false,
               actions.activeAction === "fetch",
             )}
-            {button("Manage Bookmarks", () => setManagerOpen(true))}
+            {button("Bookmarks", () => setManagerOpen(true))}
           </View>
         </View>
         <View
@@ -176,14 +163,12 @@ export function BookmarkControls({
               accessibilityLabel="Diff branch changes"
               onPress={onDiff}
             />
-            {state.candidates.length === 0 ? (
-              button("Create bookmark", () => setCreateTarget(workspaceTarget))
-            ) : (
+            {state.candidates.length > 0 ? (
               <>
                 {button("Tug", tug, !branch, actions.activeAction === "tug")}
                 {button("Push", push, !branch, actions.activeAction === "push")}
               </>
-            )}
+            ) : null}
           </View>
         </View>
         {!actions.busy && (actions.error || actions.operation?.status === "failed") ? (
@@ -251,212 +236,14 @@ export function BookmarkControls({
         </Modal.Content>
       </Modal>
 
-      <Modal title="Bookmarks" open={managerOpen} onOpenChange={setManagerOpen}>
-        <Modal.Content>
-          {button("Create bookmark", () => {
-            setManagerOpen(false);
-            setCreateTarget(workspaceTarget);
-          })}
-          {state.bookmarks
-            .filter((entry) => entry.remote !== "git")
-            .map((bookmark) => (
-              <View
-                key={`${bookmark.name}@${bookmark.remote ?? ""}`}
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-              >
-                <Text
-                  numberOfLines={2}
-                  style={{ flex: 1, color: theme.colors.foreground, fontSize: 12 }}
-                >
-                  {bookmark.name}
-                  {bookmark.remote
-                    ? `@${bookmark.remote} · ${bookmark.tracked ? "tracked" : "untracked"}`
-                    : bookmark.targets.length
-                      ? ""
-                      : " · deleted"}
-                  {bookmark.conflict ? " · conflicted" : ""}
-                </Text>
-                {bookmark.remote === null && bookmark.targets.length > 0
-                  ? button(
-                      remote ? `Push to ${remote}` : "Choose remote…",
-                      () => {
-                        setManagerOpen(false);
-                        if (remote)
-                          run({
-                            kind: "push",
-                            remote,
-                            subject: {
-                              kind: "bookmark",
-                              name: bookmark.name,
-                              expectedTargets: bookmark.targets,
-                            },
-                          });
-                        else setRemotesOpen(true);
-                      },
-                      bookmark.conflict,
-                    )
-                  : null}
-              </View>
-            ))}
-        </Modal.Content>
-      </Modal>
-
-      {createTarget ? (
-        <CreateBookmark
-          key={`${createTarget.kind}:${"commitId" in createTarget ? createTarget.commitId : createTarget.workingCopyChangeId}`}
-          theme={theme}
-          target={createTarget}
-          workspaceName={workspaceName}
-          busy={actions.busy}
-          close={() => setCreateTarget(null)}
-          run={(action) => {
-            run(action);
-            setCreateTarget(null);
-          }}
-        />
-      ) : null}
-      {menu ? (
-        <BookmarkMenu
-          target={menu}
-          theme={theme}
-          remotes={remote ? [remote] : state.remotes}
-          busy={actions.busy}
-          close={closeMenu}
-          push={(remote) => {
-            setMenu(null);
-            run({
-              kind: "push",
-              remote,
-              subject: {
-                kind: "bookmark",
-                name: menu.bookmark.name,
-                expectedTargets: menu.bookmark.targets,
-              },
-            });
-          }}
-        />
-      ) : null}
+      <BookmarksDialog
+        actions={actions}
+        theme={theme}
+        open={managerOpen}
+        onOpenChange={setManagerOpen}
+        remote={remote}
+        onRemoteChange={setRemoteChoice}
+      />
     </>
-  );
-}
-
-function ActionButton({
-  label,
-  accessibilityLabel = label,
-  onPress,
-  disabled = false,
-  theme,
-  loading = false,
-}: {
-  readonly label: string;
-  readonly accessibilityLabel?: string;
-  readonly onPress: () => void;
-  readonly disabled?: boolean;
-  readonly theme: PluginTheme;
-  readonly loading?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled: disabled || loading, busy: loading }}
-      disabled={disabled || loading}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        paddingHorizontal: 9,
-        paddingVertical: 7,
-        borderRadius: 5,
-        backgroundColor: theme.colors.surface1,
-        opacity: (disabled && !loading) || pressed ? 0.45 : 1,
-      })}
-    >
-      <Text
-        style={{
-          color: theme.colors.foreground,
-          fontSize: 11,
-          opacity: loading ? 0 : 1,
-        }}
-      >
-        {label}
-      </Text>
-      {loading ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ActivityIndicator size="small" color={theme.colors.foreground} />
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
-
-function CreateBookmark({
-  theme,
-  target,
-  workspaceName,
-  busy,
-  close,
-  run,
-}: {
-  theme: PluginTheme;
-  target: BookmarkTarget;
-  workspaceName: string;
-  busy: boolean;
-  close(): void;
-  run(action: BookmarkAction): void;
-}) {
-  const [name, setName] = useState(workspaceName.replace(/[^A-Za-z0-9._/-]/g, "-"));
-  const create = () => {
-    if (busy || !name.trim()) return;
-    run({ kind: "create", name: name.trim(), target, publish: false });
-  };
-  return (
-    <Modal
-      title="Create bookmark"
-      open
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-    >
-      <Modal.Content>
-        <TextInput
-          accessibilityLabel="Bookmark name"
-          value={name}
-          onChangeText={setName}
-          onSubmitEditing={create}
-          returnKeyType="done"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            color: theme.colors.foreground,
-            borderColor: theme.colors.border,
-            borderWidth: 1,
-            borderRadius: 5,
-            padding: 10,
-          }}
-        />
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-          {target.kind === "workspace"
-            ? "Create at this workspace’s tip."
-            : `Create at ${target.changeId.slice(0, 8)}.`}{" "}
-          Use Push separately when you’re ready.
-        </Text>
-        <ActionButton
-          theme={theme}
-          label="Create bookmark"
-          disabled={busy || !name.trim()}
-          onPress={create}
-        />
-      </Modal.Content>
-    </Modal>
   );
 }

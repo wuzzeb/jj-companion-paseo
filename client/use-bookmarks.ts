@@ -70,6 +70,7 @@ export function useBookmarks(
     run: start.mutateAsync,
     busy,
     activeAction: busy ? start.variables?.kind : undefined,
+    pendingAction: busy ? start.variables : undefined,
     operation: operation.data,
     error: operation.error?.message ?? start.error?.message,
   };

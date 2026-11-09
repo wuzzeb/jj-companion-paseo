@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View, Platform, StyleSheet } from "react-native";
 import { useRpc, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
@@ -12,8 +12,7 @@ import { useBookmarks } from "./use-bookmarks.js";
 import { BookmarkControls } from "./bookmark-controls.js";
 import { BookmarkChip } from "./bookmark-chip.js";
 import { ChangeRow } from "./change-row.js";
-import type { BookmarkMenuTarget } from "./bookmark-menu.js";
-import type { Bookmark, BookmarkTarget } from "../shared/bookmarks.js";
+import type { Bookmark } from "../shared/bookmarks.js";
 
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
 const revision = ({ commitId, changeId }: Change) => ({ commitId, changeId });
@@ -23,7 +22,6 @@ export function ChangeList({
   hostId,
   workspaceId,
   directory,
-  workspaceName,
   repository,
   enabled,
   target,
@@ -36,7 +34,6 @@ export function ChangeList({
   readonly hostId: string;
   readonly workspaceId: string;
   readonly directory: string | null;
-  readonly workspaceName: string;
   readonly repository: string;
   readonly enabled: boolean;
   readonly target: ReviewTarget;
@@ -46,9 +43,6 @@ export function ChangeList({
   readonly onSelect: (target: ReviewTarget) => void;
 }) {
   const [width, setWidth] = useState(320);
-  const panelRef = useRef<View>(null);
-  const [menu, setMenu] = useState<BookmarkMenuTarget | null>(null);
-  const [createTarget, setCreateTarget] = useState<BookmarkTarget | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   useEffect(() => setSelectionError(null), [target]);
   const bookmarks = useBookmarks(workspaceId, hostId, directory, repository, enabled);
@@ -105,56 +99,21 @@ export function ChangeList({
     return entries;
   }, [bookmarks.state.data]);
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const openBookmark = (bookmark: Bookmark, trigger: View | null) => {
-    if (bookmarks.busy || bookmark.remote !== null || !trigger) return;
-    trigger.measureInWindow((x, y, width, height) => {
-      panelRef.current?.measureInWindow((panelX, panelY, panelWidth, panelHeight) => {
-        setMenu({
-          bookmark,
-          trigger,
-          anchor: { x: x - panelX, y: y - panelY, width, height },
-          bounds: { width: panelWidth, height: panelHeight },
-        });
-      });
-    });
-  };
 
   return (
     <View
-      ref={panelRef}
       style={styles.panel}
       testID="jj-change-list"
       onLayout={(event) => {
         setWidth(event.nativeEvent.layout.width);
-        setMenu(null);
       }}
     >
       <View style={styles.toolbar}>
         <Icon name="GitGraph" size={15} color={theme.colors.foregroundMuted} />
         <Text style={styles.title}>Changes</Text>
-        {selected ? (
-          <Pressable
-            onPress={() => setCreateTarget({ kind: "change", ...revision(selected) })}
-            disabled={bookmarks.busy}
-            accessibilityRole="button"
-            accessibilityLabel="Create bookmark on selected change"
-            style={styles.iconButton}
-          >
-            <Icon name="BookmarkPlus" size={15} color={theme.colors.foregroundMuted} />
-          </Pressable>
-        ) : null}
       </View>
       {history ? (
-        <BookmarkControls
-          actions={bookmarks}
-          theme={theme}
-          workspaceName={workspaceName}
-          menu={menu}
-          setMenu={setMenu}
-          createTarget={createTarget}
-          setCreateTarget={setCreateTarget}
-          onDiff={() => onSelect(branchReview)}
-        />
+        <BookmarkControls actions={bookmarks} theme={theme} onDiff={() => onSelect(branchReview)} />
       ) : null}
       {query.error ? (
         <View style={styles.message} accessibilityRole="alert">
@@ -207,10 +166,6 @@ export function ChangeList({
                   change={change}
                   active={active}
                   theme={theme}
-                  hostId={hostId}
-                  workspaceId={workspaceId}
-                  repository={repository}
-                  disabled={bookmarks.busy}
                   onSelect={(extend) => {
                     const anchor = extend && selected ? selected : change;
                     if (
@@ -228,20 +183,6 @@ export function ChangeList({
                       anchor: revision(anchor),
                       ...(anchor.commitId === change.commitId ? {} : { end: revision(change) }),
                     });
-                  }}
-                  onMove={(bookmark, target) => {
-                    void bookmarks
-                      .run({
-                        kind: "move",
-                        name: bookmark.name,
-                        expectedTargets: bookmark.targets,
-                        target: {
-                          kind: "change",
-                          commitId: target.commitId,
-                          changeId: target.changeId,
-                        },
-                      })
-                      .catch(() => {});
                   }}
                 >
                   <GraphRail
@@ -261,12 +202,7 @@ export function ChangeList({
                         <BookmarkChip
                           key={`${bookmark.name}@${bookmark.remote ?? ""}`}
                           bookmark={bookmark}
-                          hostId={hostId}
-                          workspaceId={workspaceId}
-                          repository={repository}
                           theme={theme}
-                          disabled={bookmarks.busy}
-                          onOpen={openBookmark}
                         />
                       ))}
                       {!bookmarks.state.data && change.bookmarks.length > 0 ? (
@@ -341,13 +277,6 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
     muted: { color: colors.foregroundMuted, fontSize: 11, lineHeight: 17 },
     accent: { color: colors.foreground, fontSize: 12, fontWeight: "500" },
     error: { color: colors.statusDanger, fontSize: 12 },
-    iconButton: {
-      width: 32,
-      height: 32,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 4,
-    },
     list: { flex: 1, minHeight: 0 },
     rowContent: { flex: 1, minWidth: 0, paddingTop: 10, gap: 5 },
     refs: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 18 },

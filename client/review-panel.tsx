@@ -51,7 +51,6 @@ const labels = {
 
 export function ReviewPanel(props: PluginWorkspacePanelProps) {
   const directory = useWorkspace(props.workspaceId, (workspace) => workspace.directory);
-  const workspaceName = useWorkspace(props.workspaceId, (workspace) => workspace.name);
   if (props.layout.platform !== "web")
     return <Text>Review is available in Paseo on desktop and web.</Text>;
   return (
@@ -59,7 +58,6 @@ export function ReviewPanel(props: PluginWorkspacePanelProps) {
       key={`${props.host.id}:${props.workspaceId}:${directory}`}
       {...props}
       directory={directory}
-      workspaceName={workspaceName ?? ""}
     />
   );
 }
@@ -70,10 +68,8 @@ function Review({
   workspaceId,
   tab,
   directory,
-  workspaceName,
 }: PluginWorkspacePanelProps & {
   readonly directory: string | null;
-  readonly workspaceName: string;
 }) {
   const [tabState, setState] = useTabState(tab, stateSchema, {
     repository: ".",
@@ -206,7 +202,6 @@ function Review({
             hostId={host.id}
             workspaceId={workspaceId}
             directory={directory}
-            workspaceName={workspaceName}
             repository={repository}
             enabled={repositories.isSuccess && repositories.data.length > 0}
             target={state.target}

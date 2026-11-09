@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View, Platform, StyleSheet } from "react-native";
 import { useRpc, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
@@ -29,6 +29,7 @@ export function ChangeList({
   limit,
   onLimit,
   onSelect,
+  headerControls,
 }: {
   readonly theme: PluginWorkspacePanelProps["theme"];
   readonly hostId: string;
@@ -41,6 +42,7 @@ export function ChangeList({
   readonly limit: number;
   readonly onLimit: (limit: number) => void;
   readonly onSelect: (target: ReviewTarget) => void;
+  readonly headerControls: ReactNode;
 }) {
   const [width, setWidth] = useState(320);
   const [selectionError, setSelectionError] = useState<string | null>(null);
@@ -111,6 +113,7 @@ export function ChangeList({
       <View style={styles.toolbar}>
         <Icon name="GitGraph" size={15} color={theme.colors.foregroundMuted} />
         <Text style={styles.title}>Changes</Text>
+        {headerControls}
       </View>
       {history ? (
         <BookmarkControls actions={bookmarks} theme={theme} onDiff={() => onSelect(branchReview)} />
@@ -273,7 +276,7 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       borderBottomColor: colors.border,
       zIndex: 1,
     },
-    title: { flex: 1, color: colors.foreground, fontSize: 12, fontWeight: "500" },
+    title: { flexShrink: 0, color: colors.foreground, fontSize: 12, fontWeight: "500" },
     muted: { color: colors.foregroundMuted, fontSize: 11, lineHeight: 17 },
     accent: { color: colors.foreground, fontSize: 12, fontWeight: "500" },
     error: { color: colors.statusDanger, fontSize: 12 },

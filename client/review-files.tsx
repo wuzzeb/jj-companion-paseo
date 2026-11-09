@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { ReviewFile } from "../shared/review.js";
 import { buildFileTree, type FileNode } from "./review-file-tree.js";
+import { IconButton } from "./icon-button.js";
 
 interface FileSelection {
   readonly selectedPath: string | null;
@@ -24,13 +25,11 @@ export function ReviewFiles({
         <span className="review-file-count">
           {files.length} changed {files.length === 1 ? "file" : "files"}
         </span>
-        <button
+        <IconButton
           onClick={onToggleLayout}
-          aria-label={layout === "flat" ? "Show file tree" : "Show flat file list"}
-          title={layout === "flat" ? "Show file tree" : "Show flat file list"}
-        >
-          {layout === "flat" ? "Tree" : "Flat"}
-        </button>
+          label={layout === "flat" ? "Show file tree" : "Show flat file list"}
+          icon={layout === "flat" ? "FolderTree" : "List"}
+        />
       </div>
       {layout === "tree" ? (
         <FileNodes nodes={tree} {...selection} />

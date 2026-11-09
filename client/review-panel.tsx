@@ -26,6 +26,7 @@ import { collapseContext } from "./review-context.js";
 import { inlineDiff } from "./review-layout.js";
 import { ChangeList } from "./change-list.js";
 import { ReviewFiles } from "./review-files.js";
+import { IconButton } from "./icon-button.js";
 import { historyLimit, maxHistoryLimit } from "../shared/history.js";
 
 const stateSchema = z
@@ -160,40 +161,6 @@ function Review({
       }}
     >
       <style>{diffCss + reviewCss}</style>
-      <header className="review-toolbar">
-        <div className="review-toolbar-start">
-          <span className="review-title">jj companion</span>
-          {repositories.data && repositories.data.length > 1 ? (
-            <select
-              aria-label="Review repository"
-              value={repository}
-              onChange={(event) =>
-                setState({
-                  ...state,
-                  repository: event.target.value,
-                  path: null,
-                  target: branchReview,
-                  historyLimit,
-                  generation: state.generation + 1,
-                })
-              }
-            >
-              {repositories.data.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label}
-                </option>
-              ))}
-            </select>
-          ) : null}
-        </div>
-        <button
-          onClick={refresh}
-          disabled={comparison.isFetching || repositories.isFetching}
-          aria-label="Refresh review snapshot"
-        >
-          {comparison.isFetching ? "Refreshing…" : "Refresh"}
-        </button>
-      </header>
       <div className="review-layout">
         <aside className="review-changes" aria-label="Change history">
           <ChangeList
@@ -209,6 +176,40 @@ function Review({
             limit={state.historyLimit}
             onLimit={(historyLimit) => setState({ ...state, historyLimit })}
             onSelect={select}
+            headerControls={
+              <div className="review-history-controls">
+                {repositories.data && repositories.data.length > 1 ? (
+                  <select
+                    className="review-repository-picker"
+                    title={repositories.data.find((entry) => entry.id === repository)?.label}
+                    aria-label="Review repository"
+                    value={repository}
+                    onChange={(event) =>
+                      setState({
+                        ...state,
+                        repository: event.target.value,
+                        path: null,
+                        target: branchReview,
+                        historyLimit,
+                        generation: state.generation + 1,
+                      })
+                    }
+                  >
+                    {repositories.data.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <IconButton
+                  icon="RotateCw"
+                  label="Refresh changes and diff"
+                  onClick={refresh}
+                  busy={comparison.isFetching || repositories.isFetching}
+                />
+              </div>
+            }
           />
         </aside>
         <div className="review-body">
@@ -340,17 +341,19 @@ function FilePane({
           </span>
         ) : null}
         {hasContext ? (
-          <button onClick={() => setShowAll(!showAll)}>
-            {showAll ? "Collapse context" : "Show all"}
-          </button>
+          <IconButton
+            icon={showAll ? "FoldVertical" : "UnfoldVertical"}
+            label="Show all context"
+            title={showAll ? "Collapse unchanged context" : "Show all context"}
+            pressed={showAll}
+            onClick={() => setShowAll(!showAll)}
+          />
         ) : null}
-        <button
+        <IconButton
           onClick={onToggleLayout}
-          aria-label={split ? "Show inline diff" : "Show side-by-side diff"}
-          title={split ? "Show inline diff" : "Show side-by-side diff"}
-        >
-          {split ? "Inline" : "Side by side"}
-        </button>
+          label={split ? "Show inline diff" : "Show side-by-side diff"}
+          icon={split ? "Rows2" : "Columns2"}
+        />
       </div>
       {query.error ? (
         <div role="alert" className="review-message review-error">

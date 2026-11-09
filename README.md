@@ -72,14 +72,15 @@ branches or merges. Individual merge changes use jj's merged-parent baseline. **
 **Tug** and **Push** in the branch row, returns to `fork_point(main|@)` → `@`. The active comparison
 appears above the diff; a single change shows its description and metadata there instead.
 
-The top bar contains the **jj companion** title, repository selector when needed, and **Refresh**.
+The **Changes** heading contains the repository selector when needed and a small refresh icon. There
+is no separate top toolbar; hover an icon control to see its action.
 
 If the jj root has immediate child directories containing their own `.jj` directory, a repository
-selector appears beside **jj companion**. It lists the root first, followed by child repositories by name,
-including ignored checkouts and separately created jj workspaces. Discovery goes one level deep and
-skips directory symlinks. The graph, bookmarks, Fetch, Push, files, and diff all follow this
-selection. Switching repositories returns to its branch comparison and resets the history depth.
-Refresh rescans the available repositories.
+selector appears beside **Changes**. It lists the root first, followed by child repositories by
+name, including ignored checkouts and separately created jj workspaces. Discovery goes one level
+deep and skips directory symlinks. The graph, bookmarks, Fetch, Push, files, and diff all follow
+this selection. Switching repositories returns to its branch comparison and resets the history
+depth. Refresh rescans the available repositories.
 
 The graph shows descriptions, bookmarks, working-copy and workspace labels, and conflicts. History
 keeps each branch's stack together, with the current workspace's stack first, using jj's graph
@@ -94,25 +95,24 @@ again or use **Refresh** to reopen a comparison against current revisions. Unamb
 followed when resolving selected changes. Git-only repositories and ordinary directories show an
 empty state.
 
-Click a collapsed context row or **Show all** to reveal the complete file; **Collapse context**
-hides unchanged regions again. Use **Inline** / **Side by side** in the file header to toggle the
-diff layout; the choice is saved with the review tab. Mouse selections copy code without line
-numbers, and stay within one column in side-by-side mode. Code uses
-Paseo's configured monospace/terminal font, including live preference changes; interface labels keep
-the interface font.
+Click a collapsed context row or the expand-context icon in the file header to reveal the complete
+file; the same icon collapses unchanged regions again. Use the adjacent inline/side-by-side icon to
+toggle the diff layout; the choice is saved with the review tab. Mouse selections copy code without
+line numbers, and stay within one column in side-by-side mode. Code uses Paseo's configured
+monospace/terminal font, including live preference changes; interface labels keep the interface
+font.
 
-Use **Tree** / **Flat** above the changed files to switch between full paths and a collapsible
+Use the tree/list icon above the changed files to switch between full paths and a collapsible
 directory tree. The choice is saved with the review tab. Tree folders start expanded; file status,
 selection, and rename tooltips are available in both views.
 
 Opening a comparison or pressing **Refresh** snapshots edits and pins the jj operation and the
 comparison's concrete commit IDs. Browsing files and revealing context keep that snapshot, so agent
-changes appear only after Refresh. Syntax highlighting uses Paseo's language parsers and follows
-its configured syntax colors live. Unsupported languages and files over the highlighter's 768 KiB
-source budget per side use plain text. Word highlighting is not included.
-Binary files and path/permission-only changes show notices. Comments and review marks
-are not included. Files are limited to 20,000 diff lines and jj's 16 MiB output limit; revsets may
-select up to 1,000 changes.
+changes appear only after Refresh. Syntax highlighting uses Paseo's language parsers and follows its
+configured syntax colors live. Unsupported languages and files over the highlighter's 768 KiB source
+budget per side use plain text. Word highlighting is not included. Binary files and
+path/permission-only changes show notices. Comments and review marks are not included. Files are
+limited to 20,000 diff lines and jj's 16 MiB output limit; revsets may select up to 1,000 changes.
 
 The small JayJay source subset is vendored under `client/vendor/jayjay` with its Apache-2.0 license
 and pinned revision. Styles are embedded in JavaScript; no package installation, worker, WASM build,
@@ -120,16 +120,17 @@ or nested checkout is required to load this branch. `tools/vendor-jayjay.mjs` re
 from a separate JayJay jj checkout when updating it.
 
 The change-list controls provide **Bookmarks**, **Tug**, **Push**, and **Fetch**. Bookmark creation
-and Tug target the workspace’s edited change (`@`), independently of the selected graph row. If
-`@` is empty and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at
-`@`. Actions snapshot pending files before resolving the tip, so unsnapshotted work is included.
+and Tug target the workspace’s edited change (`@`), independently of the selected graph row. If `@`
+is empty and has one parent, creation and Tug use that parent (`@-`); an empty merge stays at `@`.
+Actions snapshot pending files before resolving the tip, so unsnapshotted work is included.
 
 Use **Bookmarks** to create a local bookmark, then **Push** after reviewing it. The branch row’s
 **Tug** advances the nearest bookmarked ancestor to the workspace tip. Automatic discovery excludes
-immutable and trunk bookmarks, so it does not pull `main` forward into a feature branch. The branch row shows the branch
-bookmark with Diff, Tug, and Push on the right. If several names qualify, select the branch bookmark
-once for Tug and Push; neither action is enabled until a bookmark is selected. With no branch
-bookmark, the row offers Diff; create a bookmark in **Bookmarks**. No `tug` alias is required.
+immutable and trunk bookmarks, so it does not pull `main` forward into a feature branch. The branch
+row shows the branch bookmark with Diff, Tug, and Push on the right. If several names qualify,
+select the branch bookmark once for Tug and Push; neither action is enabled until a bookmark is
+selected. With no branch bookmark, the row offers Diff; create a bookmark in **Bookmarks**. No `tug`
+alias is required.
 
 **Push** publishes the bookmark at its current position; use Tug first to include newer changes. A
 first push automatically tracks the new remote bookmark. If a same-named remote bookmark already
@@ -137,11 +138,10 @@ exists and is untracked, Push tracks it first. If that imports a different local
 conflict, the operation stops for review instead of pushing a different target. **Fetch** runs
 `jj git fetch`, updating remote and tracked bookmarks without running a rebase. A single remote is
 selected automatically; choose one explicitly when the repository has multiple remotes. Fetch,
-**Bookmarks**, and the Git remote selector appear together below Changes, above the branch
-row.
+**Bookmarks**, and the Git remote selector appear together below Changes, above the branch row.
 
-The change graph is for reviewing diffs: bookmark chips are passive labels, and clicking anywhere
-on a row, including its bookmarks, opens that change’s diff. Shift-click extends the selection.
+The change graph is for reviewing diffs: bookmark chips are passive labels, and clicking anywhere on
+a row, including its bookmarks, opens that change’s diff. Shift-click extends the selection.
 
 **Bookmarks** lists local and remote bookmarks in one dialog. Local rows offer **Tug** to move that
 specific bookmark to the current workspace’s tip, even from another stack, and **Push to** the
@@ -154,8 +154,8 @@ the current workspace’s tip and keeps the entered name if it fails. Conflicted
 deletion, untracking, and moving to arbitrary revisions are left to the jj CLI.
 
 Bookmark operations are serialized across this plugin’s workspaces sharing the same jj repository.
-Stale bookmark positions and workspace changes produce an error and refresh the view. Push and
-Fetch run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
+Stale bookmark positions and workspace changes produce an error and refresh the view. Push and Fetch
+run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
 Closing the panel does not cancel a job; reloading or disabling the plugin cancels pending work.
 Normal jj push checks remain enabled, including description, conflict, and remote-update checks.
 

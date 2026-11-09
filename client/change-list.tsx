@@ -205,13 +205,12 @@ export function ChangeList({
                         <BookmarkChip
                           key={`${bookmark.name}@${bookmark.remote ?? ""}`}
                           bookmark={bookmark}
-                          theme={theme}
                         />
                       ))}
                       {!bookmarks.state.data && change.bookmarks.length > 0 ? (
-                        <Text style={styles.bookmark} numberOfLines={1}>
+                        <span className="review-bookmark-chip" title={change.bookmarks.join(" · ")}>
                           {change.bookmarks.join(" · ")}
-                        </Text>
+                        </span>
                       ) : null}
                       {!change.isWorkingCopy && change.workspaces.length > 0 ? (
                         <Text style={styles.workspaceRef} numberOfLines={1}>
@@ -294,16 +293,6 @@ function createStyles({ colors }: PluginWorkspacePanelProps["theme"]) {
       overflow: "hidden",
     },
     conflictBadge: { color: colors.statusDanger, fontSize: 10 },
-    bookmark: {
-      color: colors.accentForeground,
-      backgroundColor: colors.accent,
-      fontSize: 10,
-      fontWeight: "500",
-      paddingHorizontal: 5,
-      paddingVertical: 1,
-      borderRadius: 4,
-      flexShrink: 1,
-    },
     workspaceRef: { color: colors.statusSuccess, fontSize: 11, flexShrink: 1 },
     summary: { color: colors.foreground, fontSize: 12, lineHeight: 17 },
     meta: { flexDirection: "row", alignItems: "center", gap: 7 },

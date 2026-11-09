@@ -50,6 +50,8 @@ export const reviewCss = `
 .paseo-jj-review .review-change-description p { margin:6px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
 .paseo-jj-review .review-change-meta { display:flex; flex-wrap:wrap; align-items:center; gap:5px 12px; margin-top:6px; color:var(--jj-muted); font-size:11px; }
 .paseo-jj-review .review-change-meta code { font-family:var(--jj-mono); }
+.paseo-jj-review .review-bookmark-chip { display:block; max-width:160px; flex-shrink:1; padding:2px 5px; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; font-weight:500; color:var(--jj-accent); background:color-mix(in srgb, var(--jj-accent) 14%, var(--jj-page)); }
+.paseo-jj-review .review-bookmark-chip[data-conflict=true] { color:var(--jj-removed-ink); background:var(--jj-surface); }
 .paseo-jj-review .review-body { display:flex; flex:1; min-height:0; min-width:0; }
 .paseo-jj-review .review-files { flex:0 0 200px; min-width:0; overflow:auto; border-right:1px solid var(--jj-border); padding:0; }
 @media (max-width:1100px) {

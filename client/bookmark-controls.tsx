@@ -14,14 +14,16 @@ export function BookmarkControls({
   setMenu,
   createTarget,
   setCreateTarget,
+  onDiff,
 }: {
-  actions: ReturnType<typeof useBookmarks>;
-  theme: PluginTheme;
-  workspaceName: string;
-  menu: BookmarkMenuTarget | null;
-  setMenu(value: BookmarkMenuTarget | null): void;
-  createTarget: BookmarkTarget | null;
-  setCreateTarget(value: BookmarkTarget | null): void;
+  readonly actions: ReturnType<typeof useBookmarks>;
+  readonly theme: PluginTheme;
+  readonly workspaceName: string;
+  readonly menu: BookmarkMenuTarget | null;
+  readonly setMenu: (value: BookmarkMenuTarget | null) => void;
+  readonly createTarget: BookmarkTarget | null;
+  readonly setCreateTarget: (value: BookmarkTarget | null) => void;
+  readonly onDiff: () => void;
 }) {
   const state = actions.state.data;
   const [remoteChoice, setRemoteChoice] = useState<string | null>(null);
@@ -168,6 +170,12 @@ export function BookmarkControls({
             </Text>
           )}
           <View style={{ flexDirection: "row", gap: 5, flexShrink: 0 }}>
+            <ActionButton
+              theme={theme}
+              label="Diff"
+              accessibilityLabel="Diff branch changes"
+              onPress={onDiff}
+            />
             {state.candidates.length === 0 ? (
               button("Create bookmark", () => setCreateTarget(workspaceTarget))
             ) : (
@@ -334,21 +342,23 @@ export function BookmarkControls({
 
 function ActionButton({
   label,
+  accessibilityLabel = label,
   onPress,
   disabled = false,
   theme,
   loading = false,
 }: {
-  label: string;
-  onPress(): void;
-  disabled?: boolean;
-  theme: PluginTheme;
-  loading?: boolean;
+  readonly label: string;
+  readonly accessibilityLabel?: string;
+  readonly onPress: () => void;
+  readonly disabled?: boolean;
+  readonly theme: PluginTheme;
+  readonly loading?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
       onPress={onPress}

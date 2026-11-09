@@ -68,17 +68,14 @@ panel.
 Click a change to immediately review it. Its full description, author, timestamp, and IDs appear
 above the code, from the same pinned snapshot as the diff. Shift-click another change to immediately
 review an inclusive linear range; a normal click returns to a single change. Ranges cannot cross
-branches or merges. Individual merge changes use jj's merged-parent baseline. **Branch changes**
-returns to `fork_point(main|@)` → `@`.
+branches or merges. Individual merge changes use jj's merged-parent baseline. **Diff**, beside
+**Tug** and **Push** in the branch row, returns to `fork_point(main|@)` → `@`. The active comparison
+appears above the diff; a single change shows its description and metadata there instead.
 
-The single toolbar describes the active comparison. **Select Changes** opens a dialog for branch
-changes, a single change, a revset (jj's `diff -r` semantics), or explicit **From** and **To**
-revisions. Click **Open diff** to apply edits; Cancel or Escape keeps the current comparison. Expand
-**Current pinned revisions** inside the dialog to see the exact commits. Multi-change and endpoint
-comparisons replace the single-change description with the comparison caption.
+The top bar contains the **jj companion** title, repository selector when needed, and **Refresh**.
 
 If the jj root has immediate child directories containing their own `.jj` directory, a repository
-selector appears beside **Review**. It lists the root first, followed by child repositories by name,
+selector appears beside **jj companion**. It lists the root first, followed by child repositories by name,
 including ignored checkouts and separately created jj workspaces. Discovery goes one level deep and
 skips directory symlinks. The graph, bookmarks, Fetch, Push, files, and diff all follow this
 selection. Switching repositories returns to its branch comparison and resets the history depth.
@@ -131,9 +128,9 @@ With no branch bookmark, **Create bookmark** suggests the workspace name. Press 
 **Create bookmark** to create it locally, then use **Push** after reviewing it. **Tug** advances the
 nearest bookmarked ancestor to the workspace tip. Automatic discovery excludes immutable and trunk
 bookmarks, so it does not pull `main` forward into a feature branch. The branch row shows the branch
-bookmark with Tug and Push on the right. If several names qualify, select the branch bookmark once
-for both actions; neither action is enabled until a bookmark is selected. With no branch bookmark,
-the row offers creation instead. No `tug` alias is required.
+bookmark with Diff, Tug, and Push on the right. If several names qualify, select the branch bookmark
+once for Tug and Push; neither action is enabled until a bookmark is selected. With no branch
+bookmark, the row offers Diff and creation instead. No `tug` alias is required.
 
 **Push** publishes the bookmark at its current position; use Tug first to include newer changes. A
 first push automatically tracks the new remote bookmark. If a same-named remote bookmark already

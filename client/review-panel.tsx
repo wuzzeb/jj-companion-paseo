@@ -24,7 +24,6 @@ import { diffCss } from "./vendor/jayjay/styles.js";
 import { reviewCss } from "./review-styles.js";
 import { collapseContext } from "./review-context.js";
 import { inlineDiff } from "./review-layout.js";
-import { ReviewComparisonDialog } from "./review-comparison-dialog.js";
 import { ChangeList } from "./change-list.js";
 import { ReviewFiles } from "./review-files.js";
 import { historyLimit, maxHistoryLimit } from "../shared/history.js";
@@ -85,7 +84,6 @@ function Review({
     generation: 0,
     historyLimit,
   });
-  const [selecting, setSelecting] = useState(false);
   const queryClient = useQueryClient();
   const [copySide, setCopySide] = useState<"old" | "new" | null>(null);
   const listRepositories = useRpc(repositoriesRpc);
@@ -122,6 +120,7 @@ function Review({
     retry: false,
   });
   const data = comparison.data;
+  const comparisonLabel = data?.snapshot.label ?? reviewTargetLabel(state.target);
   const file = data?.files.find((entry) => entry.path === state.path) ?? data?.files[0];
   const { colors } = theme;
   const variables = {
@@ -139,7 +138,6 @@ function Review({
     "--jj-mono": "var(--fontFamily-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
   } as CSSProperties;
   const select = (target: ReviewTarget) => {
-    setSelecting(false);
     setState({ ...state, target, path: null, generation: state.generation + 1 });
   };
   const refresh = () => {
@@ -192,38 +190,14 @@ function Review({
             </select>
           ) : null}
         </div>
-        <span
-          className="review-current"
-          title={data?.snapshot.label ?? reviewTargetLabel(state.target)}
+        <button
+          onClick={refresh}
+          disabled={comparison.isFetching || repositories.isFetching}
+          aria-label="Refresh review snapshot"
         >
-          {data?.snapshot.label ?? reviewTargetLabel(state.target)}
-        </span>
-        <div className="review-toolbar-actions">
-          <button onClick={() => select(branchReview)} title="fork_point(main|@) → @">
-            Branch changes
-          </button>
-          <button
-            onClick={refresh}
-            disabled={comparison.isFetching || repositories.isFetching}
-            aria-label="Refresh review snapshot"
-          >
-            {comparison.isFetching ? "Refreshing…" : "Refresh"}
-          </button>
-          <button onClick={() => setSelecting(true)} aria-haspopup="dialog">
-            Select Changes
-          </button>
-        </div>
+          {comparison.isFetching ? "Refreshing…" : "Refresh"}
+        </button>
       </header>
-      {selecting ? (
-        <ReviewComparisonDialog
-          key={`${state.generation}:${JSON.stringify(state.target)}`}
-          target={state.target}
-          snapshot={data?.snapshot}
-          busy={comparison.isFetching}
-          onClose={() => setSelecting(false)}
-          onOpen={select}
-        />
-      ) : null}
       <div className="review-layout">
         <aside className="review-changes" aria-label="Change history">
           <ChangeList
@@ -259,7 +233,13 @@ function Review({
             />
           ) : null}
           <div className="review-document">
-            {data?.snapshot.change ? <ChangeDescription change={data.snapshot.change} /> : null}
+            {data?.snapshot.change ? (
+              <ChangeDescription change={data.snapshot.change} />
+            ) : (
+              <div className="review-comparison-caption" title={comparisonLabel}>
+                {comparisonLabel}
+              </div>
+            )}
             {repositories.error || comparison.error ? (
               <div role="alert" className="review-refresh-error review-error">
                 {(repositories.error ?? comparison.error)?.message}

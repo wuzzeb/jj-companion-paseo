@@ -5,7 +5,7 @@ import { useRpc, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client"
 import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { historyLimit, historyRpc, maxHistoryLimit, type Change } from "../shared/history.js";
 import { linearRange } from "../shared/linear-range.js";
-import type { ReviewSnapshot, ReviewTarget } from "../shared/review.js";
+import { branchReview, type ReviewSnapshot, type ReviewTarget } from "../shared/review.js";
 import { layoutGraph, resolveSelection, rowHeight } from "./graph.js";
 import { GraphRail } from "./graph-rail.js";
 import { useBookmarks } from "./use-bookmarks.js";
@@ -153,6 +153,7 @@ export function ChangeList({
           setMenu={setMenu}
           createTarget={createTarget}
           setCreateTarget={setCreateTarget}
+          onDiff={() => onSelect(branchReview)}
         />
       ) : null}
       {query.error ? (

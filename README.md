@@ -243,3 +243,6 @@ hook; keep those roots in Codex configuration or per-agent options instead. The 
 saved with the new agent; existing agents need to be recreated to receive them.
 
 The `paseo/` directory is an ignored reference checkout, not part of the plugin.
+
+Deferred upstream requests for file-tab navigation, typography settings, and native diff rendering
+are tracked in [Paseo API improvements](docs/paseo-api-wishlist.md).

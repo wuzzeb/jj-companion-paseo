@@ -89,6 +89,12 @@ ordering. Children appear before their parents, including at forks and merges. I
 connections outside the loaded rows end in faded stubs. The review tab remembers its repository,
 comparison, selected file, and history depth across app reloads using Paseo's persisted tab state.
 
+Drag the dividers between Changes, Files, and the diff to resize the two left columns. Widths are
+saved with the review tab across reloads and constrained to leave room for the diff. Closing the tab
+and opening a new one uses the defaults. Double-click a divider to restore its responsive default
+width. Focus a divider and use Left/Right to adjust by 10 pixels (Shift for 50), or Home/End for its
+minimum/maximum width.
+
 History and bookmarks refresh every 10 seconds while the app is active. These reads do not snapshot
 files or modify jj's operation log, and do not change the pinned diff or description. Click a row
 again or use **Refresh** to reopen a comparison against current revisions. Unambiguous rewrites are

@@ -26,8 +26,13 @@ import { collapseContext } from "./review-context.js";
 import { inlineDiff } from "./review-layout.js";
 import { ChangeList } from "./change-list.js";
 import { ReviewFiles } from "./review-files.js";
+import { ResizableColumn, columnDividerWidth } from "./resizable-column.js";
 import { IconButton } from "./icon-button.js";
 import { historyLimit, maxHistoryLimit } from "../shared/history.js";
+
+const minChangesWidth = 260;
+const minFilesWidth = 140;
+const minDiffWidth = 240;
 
 const stateSchema = z
   .object({
@@ -35,6 +40,8 @@ const stateSchema = z
     path: z.string().nullable().default(null),
     diffLayout: z.enum(["split", "inline"]).default("split"),
     filesLayout: z.enum(["flat", "tree"]).default("flat"),
+    changesWidth: z.number().int().min(minChangesWidth).nullable().default(null),
+    filesWidth: z.number().int().min(minFilesWidth).nullable().default(null),
     target: reviewTargetSchema.default(branchReview),
     generation: z.number().int().nonnegative().default(0),
     historyLimit: z.number().int().min(historyLimit).max(maxHistoryLimit).default(historyLimit),
@@ -77,6 +84,8 @@ function Review({
     path: null,
     diffLayout: "split",
     filesLayout: "flat",
+    changesWidth: null,
+    filesWidth: null,
     target: branchReview,
     generation: 0,
     historyLimit,
@@ -162,7 +171,18 @@ function Review({
     >
       <style>{diffCss + reviewCss}</style>
       <div className="review-layout">
-        <aside className="review-changes" aria-label="Change history">
+        <ResizableColumn
+          className="review-changes"
+          label="changes column"
+          width={state.changesWidth}
+          minWidth={minChangesWidth}
+          minRemainingWidth={
+            data && data.files.length > 0
+              ? minFilesWidth + columnDividerWidth + minDiffWidth
+              : minDiffWidth
+          }
+          onResize={(changesWidth) => setState({ ...state, changesWidth })}
+        >
           <ChangeList
             key={repository}
             theme={theme}
@@ -211,22 +231,31 @@ function Review({
               </div>
             }
           />
-        </aside>
+        </ResizableColumn>
         <div className="review-body">
           {data && data.files.length > 0 ? (
-            <ReviewFiles
-              key={repository}
-              files={data.files}
-              layout={state.filesLayout}
-              selectedPath={file?.path ?? null}
-              onSelect={(path) => setState({ ...state, repository, path })}
-              onToggleLayout={() =>
-                setState({
-                  ...state,
-                  filesLayout: state.filesLayout === "flat" ? "tree" : "flat",
-                })
-              }
-            />
+            <ResizableColumn
+              className="review-files-column"
+              label="files column"
+              width={state.filesWidth}
+              minWidth={minFilesWidth}
+              minRemainingWidth={minDiffWidth}
+              onResize={(filesWidth) => setState({ ...state, filesWidth })}
+            >
+              <ReviewFiles
+                key={repository}
+                files={data.files}
+                layout={state.filesLayout}
+                selectedPath={file?.path ?? null}
+                onSelect={(path) => setState({ ...state, repository, path })}
+                onToggleLayout={() =>
+                  setState({
+                    ...state,
+                    filesLayout: state.filesLayout === "flat" ? "tree" : "flat",
+                  })
+                }
+              />
+            </ResizableColumn>
           ) : null}
           <div className="review-document">
             {data?.snapshot.change ? (

@@ -3,6 +3,8 @@
 jj Companion brings Jujutsu workspaces, change history, bookmark management, and diff review to
 Paseo.
 
+![jj Companion showing the change graph, changed files, and a side-by-side code diff](assets/review.png)
+
 - Review a single change, a range of changes, or your branch's changes in a side-by-side or inline
   diff.
 - Browse the change graph, create bookmarks, tug them to your workspace tip, and fetch or push.

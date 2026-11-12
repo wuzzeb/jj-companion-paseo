@@ -2,6 +2,7 @@
   "id": "jj-companion",
   "name": "jj Companion",
   "description": "Jujutsu workspaces, change history, bookmark management, and side-by-side diff review for Paseo.",
+  "media": ["assets/review.png"],
   "requirements": {
     "paseo": ">=0.15.0"
   },

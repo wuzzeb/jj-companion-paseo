@@ -99,6 +99,10 @@ jobs:
             'index.server.ts', 'index.client.tsx', 'install-lock.yaml', 'pnpm-workspace.yaml',
             'client/vendor/jayjay/LICENSE', 'client/vendor/jayjay/NOTICE.md',
           ]) assert(files.has(file), `Missing package file: ${file}`);
+          const manifest = JSON.parse(readFileSync('paseo-plugin.json', 'utf8'));
+          for (const file of [manifest.icon, ...(manifest.media ?? [])].filter(Boolean)) {
+            if (!file.startsWith('https://')) assert(files.has(file), `Missing plugin asset: ${file}`);
+          }
           assert(![...files].some(file => /(?:^|\/)(?:node_modules|\.github|\.codex)\//.test(file)
             || file.endsWith('.test.ts')), 'Package contains development-only files');
           appendFileSync(process.env.GITHUB_OUTPUT,

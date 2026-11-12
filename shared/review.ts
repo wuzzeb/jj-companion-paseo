@@ -20,10 +20,11 @@ export const reviewTargetSchema = z.discriminatedUnion("kind", [
 ]);
 export type ReviewTarget = z.infer<typeof reviewTargetSchema>;
 export const branchReview = { kind: "branch" } as const;
+export const branchBaseRevset = "fork_point(trunk()|@)";
 export function reviewTargetLabel(target: ReviewTarget): string {
   switch (target.kind) {
     case "branch":
-      return "fork_point(main|@) → @";
+      return `${branchBaseRevset} → @`;
     case "endpoints":
       return `${target.from} → ${target.to}`;
     case "revisions":

@@ -11,6 +11,7 @@ import {
   reviewedChangeSchema,
   reviewTargetLabel,
   branchReview,
+  branchBaseRevset,
   type ReviewTarget,
   type ReviewSnapshot,
 } from "../shared/review.js";
@@ -76,7 +77,7 @@ export async function openReview(
   let label = reviewTargetLabel(target);
   let change: z.infer<typeof reviewedChangeSchema> | null = null;
   if (target.kind === "branch" || target.kind === "endpoints") {
-    const from = await resolve(target.kind === "branch" ? "fork_point(main|@)" : target.from);
+    const from = await resolve(target.kind === "branch" ? branchBaseRevset : target.from);
     const to = await resolve(target.kind === "branch" ? "@" : target.to);
     comparison = { kind: "endpoints", from, to };
   } else {
@@ -161,7 +162,7 @@ export async function readReviewFile(
   return {
     view,
     notice: /^(?:Binary files |Binary file )/m.test(patch)
-      ? "Binary file contents are not displayed in this prototype."
+      ? "Binary file contents are not displayed."
       : view.rows.length === 0
         ? "No textual changes. This file may only have a path or permission change."
         : null,

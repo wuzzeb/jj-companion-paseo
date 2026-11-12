@@ -86,7 +86,7 @@ export function patchToView(patch: string): DiffView {
     if (oldRemaining < 0 || newRemaining < 0) throw new Error("Invalid line counts in jj diff.");
     if (rows.length + removed.length + added.length > 20_000)
       throw new Error(
-        "This prototype displays at most 20,000 lines per file. Use an external viewer for this file.",
+        "Review displays at most 20,000 lines per file. Use an external viewer for this file.",
       );
   }
   if (oldRemaining !== 0 || newRemaining !== 0)

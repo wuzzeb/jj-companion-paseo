@@ -44,7 +44,7 @@ the legacy `?open=` route.
 jj Companion would own the jj-specific visibility check:
 
 - Offer the action when a comparison side represents the current working copy: for example, the
-  default `fork_point(main|@)` → `@`, selecting `@`, or a linear range ending at `@`.
+  default `fork_point(trunk()|@)` → `@`, selecting `@`, or a linear range ending at `@`.
 - Do not treat the first displayed row or a named bookmark as proof that a revision is `@`.
   Historical comparisons should not accidentally open a live file as though it were their source.
 - Account for the selected root/nested repository. Use the path on the working-copy side for

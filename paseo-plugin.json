@@ -1,6 +1,9 @@
 {
   "id": "jj-companion",
+  "name": "jj Companion",
+  "description": "Jujutsu workspaces, change history, bookmark management, and side-by-side diff review for Paseo.",
   "requirements": {
     "paseo": ">=0.15.0"
-  }
+  },
+  "build": [["pnpm", "install", "--frozen-lockfile", "--prod=false"]]
 }

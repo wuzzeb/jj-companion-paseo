@@ -11,7 +11,11 @@ import { revisionSchema } from "../shared/bookmarks.js";
 
 const configDirectory = await mkdtemp(join(tmpdir(), "jj-review-config-"));
 const config = join(configDirectory, "config.toml");
-await writeFile(config, '[user]\nname = "Review Test"\nemail = "review@example.invalid"\n');
+await writeFile(
+  config,
+  '[user]\nname = "Review Test"\nemail = "review@example.invalid"\n' +
+    '[revset-aliases]\n"trunk()" = "coalesce(present(develop), present(main), root())"\n',
+);
 const previousConfig = process.env.JJ_CONFIG;
 process.env.JJ_CONFIG = config;
 after(async () => {
@@ -153,6 +157,35 @@ const revision = async (root: string, revset = "@") =>
       ]),
     ),
   );
+
+test("branch review follows the configured trunk without requiring or preferring main", async (t) => {
+  const { root } = await fixture(t);
+  await jj(root, "bookmark", "rename", "main", "develop");
+  const base = await revision(root, "develop");
+  await writeFile(join(root, "first.txt"), "first branch change\n");
+  const first = await openReview(root);
+  assert.deepEqual(
+    first.files.map((file) => file.path),
+    ["first.txt"],
+  );
+  assert.equal(first.snapshot.label, "fork_point(trunk()|@) → @");
+  assert.equal(first.snapshot.comparison.kind, "endpoints");
+  if (first.snapshot.comparison.kind === "endpoints")
+    assert.equal(first.snapshot.comparison.from, base.commitId);
+
+  // A coincidentally named main on the feature stack must not override trunk().
+  await jj(root, "bookmark", "create", "main");
+  await jj(root, "new", "-m", "second branch change");
+  await writeFile(join(root, "second.txt"), "second branch change\n");
+  const next = await openReview(root);
+  assert.deepEqual(
+    next.files.map((file) => file.path),
+    ["first.txt", "second.txt"],
+  );
+  assert.equal(next.snapshot.comparison.kind, "endpoints");
+  if (next.snapshot.comparison.kind === "endpoints")
+    assert.equal(next.snapshot.comparison.from, base.commitId);
+});
 
 test("endpoint and revset comparisons pin the requested revisions instead of the working copy", async (t) => {
   const { root } = await fixture(t);

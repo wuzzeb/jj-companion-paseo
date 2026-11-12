@@ -1,5 +1,8 @@
 # Side by Side Diff Viewer Research
 
+These are historical research notes. See [the README](../../README.md) for the shipped review UI;
+branch comparisons now use `trunk()` instead of a hard-coded `main`.
+
 Research date: November 5, 2026.
 
 ## Recommendation

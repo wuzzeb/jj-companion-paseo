@@ -1,76 +1,74 @@
 # jj Companion
 
-jj Companion brings Jujutsu workspaces, commit history, and bookmark management to Paseo.
+jj Companion brings Jujutsu workspaces, change history, bookmark management, and diff review to
+Paseo.
 
-It follows Paseo's isolation picker: **Local** uses the selected directory without creating a jj
-workspace; **New worktree** creates a jj workspace inside a jj repository, based on the selected Git
-branch. Git-only repositories and ordinary directories keep Paseo's behavior.
+- Review a single change, a range of changes, or your branch's changes in a side-by-side or inline
+  diff.
+- Browse the change graph, create bookmarks, tug them to your workspace tip, and fetch or push.
+- Create isolated jj workspaces from Paseo's **New worktree** picker, with setup and teardown
+  scripts.
+- Switch between a root repository and separate jj repositories cloned into its immediate
+  subdirectories.
 
-The plugin uses `server.addHook("workspace.create.before")` to run `jj workspace add`, then gives
-Paseo the resulting directory. Paseo 0.15's `worktree.create.before` hook changes Git creation
-options but still requires Paseo to run `git worktree add`; it cannot replace creation with
-`jj workspace add`. The plugin therefore keeps jj creation in `workspace.create.before`, including
-its own awaited setup. Paseo's `worktree.create.after` hook and built-in `.worktreeinclude` copying
-do not run for these jj workspaces. Use `worktree.setup` to copy any local files they need.
+## Requirements
 
-Each workspace lives at:
+- Paseo 0.15.0 or later, with plugins enabled (`pluginsEnabled: true` in its config).
+- jj 0.46.0 or later and Git 2.42 or later on the daemon's PATH.
+- Node.js 22 or later and pnpm on the daemon's PATH for dependency installation. The repository pins
+  pnpm 12.13.0 in `package.json`.
+- A jj repository, either colocated or non-colocated.
 
-```text
-~/projects/paseo-workspaces/<projectname>-<adjective>-<animal>
-```
-
-For example, `myproject-quiet-otter`. The jj workspace name and Paseo sidebar title are both
-`quiet-otter`; the project prefix is kept only in the directory name. The plugin sets an explicit
-title in place of any requested task title, so Paseo's task auto-naming keeps the short jj name.
-Names are generated independently of Paseo's workspace ID, with retries on collisions. The source
-Paseo project membership and any working subdirectory are preserved. Existing workspaces keep their
-names and can still be archived normally.
-
-New worktree requests without a base share the source workspace's parent revision(s), just like
-plain `jj workspace add`. They do not include changes from the source working copy. Local uses the
-existing working copy, including its uncommitted changes, and does not run the plugin's setup
-commands.
-
-In Paseo's Worktree mode, the base picker lists Git branches for colocated projects. The plugin
-resolves the selected `refName` (or CLI `baseBranch`) to a commit in the backing Git store and
-passes it to `jj workspace add -r`. Qualified refs distinguish local and remote branches; a bare
-`main` prefers local main, then origin/main. Remote refs use their locally cached state; the plugin
-does not fetch. A missing base fails creation instead of falling back to another revision.
-
-Selecting a base creates a new jj workspace on that commit, without creating a named Git branch or
-jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
-arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
-
-Requires Paseo 0.15.0 or later, jj 0.46.0 or later, and Git 2.42 or later on the daemon's PATH.
 Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
 worktree alongside the jj workspace. Non-colocated sources remain non-colocated. Paths refer to the
 machine running the Paseo daemon.
 
-Install dependencies from the plugin directory, then install it in Paseo. The protocol config parser
-is bundled from the local dependencies when Paseo compiles the plugin:
+## Installation
+
+The manifest installs the locked dependencies before Paseo compiles the plugin, including when
+installing from GitHub:
+
+```bash
+paseo plugin install https://github.com/wuzzeb/jj-companion-paseo
+```
+
+For a local checkout, install dependencies first, then register its absolute path:
 
 ```bash
 pnpm install --frozen-lockfile
-paseo plugin install /absolute/path/to/paseo-jj-companion
+paseo plugin install /absolute/path/to/jj-companion-paseo
 ```
 
-Paseo must have plugins enabled (`pluginsEnabled: true` in its config). Reload after editing:
+The protocol config parser and syntax highlighter are bundled from these dependencies. No separate
+JayJay installation, Neovim, or Neovide is needed. All commands and paths refer to the machine
+running the Paseo daemon, including when connecting from another computer.
+
+Reload after editing a local installation, or update an installation managed by Paseo:
 
 ```bash
 paseo plugin reload jj-companion
+paseo plugin update jj-companion
 ```
 
-On the experimental `jayjay-review-tab` branch, **Open jj review** in Paseo's Command Center opens
-one **jj Review** workspace tab on desktop/web. The change graph is on the left, changed files in
-the middle, and the side-by-side diff on the right. This replaces the separate Explorer history
-panel.
+## Reviewing changes
+
+**Open jj review** in Paseo's Command Center opens a **jj companion** workspace tab on desktop/web.
+The change graph is on the left, changed files in the middle, and the diff on the right. The review
+interface is web-only; a native mobile diff viewer is not included.
 
 Click a change to immediately review it. Its full description, author, timestamp, and IDs appear
 above the code, from the same pinned snapshot as the diff. Shift-click another change to immediately
 review an inclusive linear range; a normal click returns to a single change. Ranges cannot cross
 branches or merges. Individual merge changes use jj's merged-parent baseline. **Diff**, beside
-**Tug** and **Push** in the branch row, returns to `fork_point(main|@)` → `@`. The active comparison
-appears above the diff; a single change shows its description and metadata there instead.
+**Tug** and **Push** in the branch row, returns to `fork_point(trunk()|@)` → `@`. The active
+comparison appears above the diff; a single change shows its description and metadata there instead.
+
+Branch comparisons use jj's `trunk()` alias, so the default branch does not need to be named `main`.
+For a repository with a custom trunk, configure the alias in jj, for example:
+
+```bash
+jj config set --repo 'revset-aliases."trunk()"' 'develop@origin'
+```
 
 The **Changes** heading contains the repository selector when needed and a small refresh icon. There
 is no separate top toolbar; hover an icon control to see its action.
@@ -120,10 +118,7 @@ budget per side use plain text. Word highlighting is not included. Binary files 
 path/permission-only changes show notices. Comments and review marks are not included. Files are
 limited to 20,000 diff lines and jj's 16 MiB output limit; revsets may select up to 1,000 changes.
 
-The small JayJay source subset is vendored under `client/vendor/jayjay` with its Apache-2.0 license
-and pinned revision. Styles are embedded in JavaScript; no package installation, worker, WASM build,
-or nested checkout is required to load this branch. `tools/vendor-jayjay.mjs` regenerates the subset
-from a separate JayJay jj checkout when updating it.
+## Bookmarks and remotes
 
 The change-list controls provide **Bookmarks**, **Tug**, **Push**, and **Fetch**. Bookmark creation
 and Tug target the workspace’s edited change (`@`), independently of the selected graph row. If `@`
@@ -166,6 +161,49 @@ Stale bookmark positions and workspace changes produce an error and refresh the 
 run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
 Closing the panel does not cancel a job; reloading or disabling the plugin cancels pending work.
 Normal jj push checks remain enabled, including description, conflict, and remote-update checks.
+
+## Workspace creation
+
+It follows Paseo's isolation picker: **Local** uses the selected directory without creating a jj
+workspace; **New worktree** creates a jj workspace inside a jj repository, based on the selected Git
+branch. Git-only repositories and ordinary directories keep Paseo's behavior.
+
+Each workspace lives at:
+
+```text
+~/projects/paseo-workspaces/<projectname>-<adjective>-<animal>
+```
+
+For example, `myproject-quiet-otter`. The jj workspace name and Paseo sidebar title are both
+`quiet-otter`; the project prefix is kept only in the directory name. The plugin sets an explicit
+title in place of any requested task title, so Paseo's task auto-naming keeps the short jj name.
+Names are generated independently of Paseo's workspace ID, with retries on collisions. The source
+Paseo project membership and any working subdirectory are preserved. Existing workspaces keep their
+names and can still be archived normally.
+
+New worktree requests without a base share the source workspace's parent revision(s), just like
+plain `jj workspace add`. They do not include changes from the source working copy. Local uses the
+existing working copy, including its uncommitted changes, and does not run the plugin's setup
+commands.
+
+In Paseo's Worktree mode, the base picker lists Git branches for colocated projects. The plugin
+resolves the selected `refName` (or CLI `baseBranch`) to a commit in the backing Git store and
+passes it to `jj workspace add -r`. Qualified refs distinguish local and remote branches; a bare
+`main` prefers local main, then origin/main. Remote refs use their locally cached state; the plugin
+does not fetch. A missing base fails creation instead of falling back to another revision.
+
+Selecting a base creates a new jj workspace on that commit, without creating a named Git branch or
+jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
+arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
+
+## Setup, teardown, and cleanup
+
+The plugin uses `server.addHook("workspace.create.before")` to run `jj workspace add`, then gives
+Paseo the resulting directory. Paseo 0.15's `worktree.create.before` hook changes Git creation
+options but still requires Paseo to run `git worktree add`; it cannot replace creation with
+`jj workspace add`. The plugin therefore keeps jj creation in `workspace.create.before`, including
+its own awaited setup. Paseo's `worktree.create.after` hook and built-in `.worktreeinclude` copying
+do not run for these jj workspaces. Use `worktree.setup` to copy any local files they need.
 
 Configure repository lifecycle commands in `paseo.json`:
 
@@ -227,14 +265,7 @@ The workspace-creation hook only runs for explicit creation; opening an existing
 `paseo run` do not run that hook. Colocated workspaces expose Git status and diffs, while Git branch
 and PR workflows retain the limitations of jj's detached Git HEAD.
 
-For development (Node.js 22 or later, plus jj):
-
-```bash
-pnpm install
-pnpm typecheck
-pnpm lint
-pnpm test
-```
+## Codex sandbox support
 
 For Codex agents opened in a jj workspace, the `agent.create.before` hook adds the shared `.jj`
 directory, the common Git directory, and the exact Git worktree directory to
@@ -250,7 +281,31 @@ on the daemon's PATH. Daemon-wide Paseo provider writable-root defaults are not 
 hook; keep those roots in Codex configuration or per-agent options instead. The merged roots are
 saved with the new agent; existing agents need to be recreated to receive them.
 
-The `paseo/` directory is an ignored reference checkout, not part of the plugin.
+## Development
+
+For development (Node.js 22 or later, plus jj):
+
+```bash
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm lint
+pnpm format:check
+pnpm test
+```
+
+The small JayJay source subset is vendored under `client/vendor/jayjay`, with its Apache-2.0 license
+and pinned revision in [NOTICE.md](client/vendor/jayjay/NOTICE.md). Its styles are embedded in
+JavaScript; no worker, WASM build, or nested checkout is needed. `tools/vendor-jayjay.mjs`
+regenerates the subset from a separate JayJay jj checkout when updating it.
+
+The ignored `paseo/`, `jayjay/`, and `jjui/` directories are reference checkouts used during
+research, not plugin dependencies. Local Codex sandbox preferences belong in your own configuration;
+`.codex/config.toml` is ignored. The plugin's Codex hook remains part of the shipped code.
 
 Deferred upstream requests for file-tab navigation, typography settings, and native diff rendering
 are tracked in [Paseo API improvements](docs/paseo-api-wishlist.md).
+
+## License
+
+Apache-2.0; see [LICENSE](LICENSE). The vendored JayJay renderer retains its own
+[license and attribution](client/vendor/jayjay/NOTICE.md).

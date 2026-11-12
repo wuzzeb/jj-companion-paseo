@@ -30,18 +30,21 @@ export async function stopProcessTree(child: ChildProcess): Promise<void> {
   }
   const kill = (signal: NodeJS.Signals) => {
     try {
-      if (child.pid !== undefined) process.kill(-child.pid, signal);
+      if (child.pid === undefined) return false;
+      process.kill(-child.pid, signal);
+      return true;
     } catch {
       // The process group already exited.
+      return false;
     }
   };
-  kill("SIGTERM");
+  if (!kill("SIGTERM")) return;
   // A shell may exit before its descendants, including children that ignore SIGTERM.
   await delay(1_000);
   kill("SIGKILL");
 }
 
-/** Settle only after cancellation has stopped the command and its descendants. */
+/** Await process-tree cleanup on failure or cancellation before settling. */
 export async function runSubprocess(
   command: string,
   args: ReadonlyArray<string>,
@@ -66,7 +69,7 @@ export async function runSubprocess(
     const stop = (message: string) => {
       if (stopped) return;
       stopped = message;
-      stopping = stopProcessTree(child);
+      stopping ??= stopProcessTree(child);
     };
     const onAbort = () => stop("Operation cancelled.");
     const timer = setTimeout(
@@ -90,6 +93,14 @@ export async function runSubprocess(
           ? `${command} was not found on the daemon’s PATH.`
           : error.message,
       );
+    });
+    child.once("exit", (code) => {
+      if (code === 0) return;
+      // Descendants may retain our pipes, delaying close, or redirect them and
+      // outlive close entirely. Start cleanup as soon as the parent fails.
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      stopping ??= stopProcessTree(child);
     });
     child.once("close", async (code) => {
       clearTimeout(timer);

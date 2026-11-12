@@ -12,8 +12,10 @@ import { jsonLines, runJj } from "./jj.js";
 const revisionTemplate =
   'json({"commitId" => commit_id, "changeId" => change_id, "parents" => parents.map(|p| p.commit_id()), "empty" => empty}) ++ "\\n"';
 const commitSchema = revisionSchema.extend({ parents: z.array(z.string()), empty: z.boolean() });
+// jj 0.46 returns Commit values here; 0.47 returns Option<Commit>, including
+// absent targets. JSON null works for both without version-specific coercion.
 const bookmarkTemplate =
-  'json({"name" => name, "remote" => remote, "tracked" => tracked, "conflict" => conflict, "targets" => added_targets.filter(|c| c).map(|c| c.commit_id())}) ++ "\\n"';
+  'json({"name" => name, "remote" => remote, "tracked" => tracked, "conflict" => conflict, "targets" => added_targets.filter(|c| json(c) != "null").map(|c| c.commit_id())}) ++ "\\n"';
 
 async function revisions(root: string, revset: string, operation = "@", signal?: AbortSignal) {
   return z.array(commitSchema).parse(
@@ -78,7 +80,7 @@ export async function readBookmarkState(
   });
 }
 
-function local(state: BookmarkState, name: string, expected?: string[]) {
+function local(state: BookmarkState, name: string, expected?: ReadonlyArray<string>) {
   const bookmark = state.bookmarks.find((entry) => entry.remote === null && entry.name === name);
   if (!bookmark) throw new Error(`Bookmark “${name}” no longer exists. Refresh history.`);
   if (expected && [...bookmark.targets].sort().join(",") !== [...expected].sort().join(",")) {
@@ -109,12 +111,7 @@ function requireRemote(state: BookmarkState, remote: string | undefined): assert
     throw new Error("Choose an available Git remote first.");
 }
 
-export async function runBookmarkAction(
-  root: string,
-  action: BookmarkAction,
-  signal?: AbortSignal,
-) {
-  const before = await readBookmarkState(root, signal);
+function requireWorkspace(state: BookmarkState, action: BookmarkAction) {
   const workspaceId =
     "workingCopyChangeId" in action
       ? action.workingCopyChangeId
@@ -123,36 +120,70 @@ export async function runBookmarkAction(
         : action.kind === "push" && action.subject.kind === "workspace"
           ? action.subject.workingCopyChangeId
           : null;
-  if (workspaceId && before.workingCopy.changeId !== workspaceId)
+  if (workspaceId && state.workingCopy.changeId !== workspaceId)
     throw new Error("The workspace is editing a different change. Refresh and try again.");
-  if ("expectedTargets" in action) local(before, action.name, action.expectedTargets);
+}
+
+function validateAction(
+  state: BookmarkState,
+  action: BookmarkAction,
+  expectedTargets: (targets: ReadonlyArray<string>) => ReadonlyArray<string> = (targets) => targets,
+) {
+  requireWorkspace(state, action);
+  if ("expectedTargets" in action)
+    local(state, action.name, expectedTargets(action.expectedTargets));
   if (action.kind === "push" && action.subject.kind === "bookmark")
-    local(before, action.subject.name, action.subject.expectedTargets);
+    local(state, action.subject.name, expectedTargets(action.subject.expectedTargets));
   if (action.kind === "push" && action.subject.kind === "workspace") {
     if (action.subject.bookmarkName)
-      local(before, action.subject.bookmarkName, action.subject.expectedTargets);
-    const bookmark = workspaceBookmark(before, action.subject.bookmarkName ?? undefined);
+      local(state, action.subject.bookmarkName, expectedTargets(action.subject.expectedTargets));
+    const bookmark = workspaceBookmark(state, action.subject.bookmarkName ?? undefined);
     if (bookmark.name !== action.subject.bookmarkName)
       throw new Error("The branch bookmark changed. Refresh and try again.");
   }
   if (action.kind === "create") {
-    if (action.publish) requireRemote(before, action.remote);
-  } else if ("remote" in action) requireRemote(before, action.remote);
+    if (action.publish) requireRemote(state, action.remote);
+  } else if ("remote" in action) requireRemote(state, action.remote);
+}
+
+export async function runBookmarkAction(
+  root: string,
+  action: BookmarkAction,
+  signal?: AbortSignal,
+) {
+  const before = await readBookmarkState(root, signal);
+  validateAction(before, action);
 
   // A user action snapshots once, then uses the resulting concrete revisions for its commands.
   await runJj(root, ["util", "snapshot"], { readOnly: false, signal });
   const state = await readBookmarkState(root, signal);
+  // Snapshot also imports colocated Git refs. Recheck their positions and the
+  // checkout, allowing only the working-copy rewrite caused by snapshotting.
+  validateAction(state, action, (targets) =>
+    targets.map((id) =>
+      id === before.workingCopy.commitId &&
+      before.workingCopy.changeId === state.workingCopy.changeId
+        ? state.workingCopy.commitId
+        : id,
+    ),
+  );
   const mutate = (args: string[], network = false) =>
     runJj(root, ["--ignore-working-copy", ...args], { readOnly: false, signal, network });
-  const push = async (name: string, remote: string) => {
+  const push = async (name: string, remote: string, expectedTargets: ReadonlyArray<string>) => {
     const current = await readBookmarkState(root, signal);
+    requireWorkspace(current, action);
+    requireRemote(current, remote);
+    const original = local(current, name, expectedTargets);
+    if (original.conflict)
+      throw new Error(`Bookmark “${name}” is conflicted. Resolve it before pushing.`);
     const remoteBookmark = current.bookmarks.find(
       (entry) => entry.name === name && entry.remote === remote,
     );
     if (!remoteBookmark?.tracked) {
-      const original = local(current, name);
       await mutate(["bookmark", "track", "--remote", `exact:${remote}`, "--", `exact:${name}`]);
-      const tracked = local(await readBookmarkState(root, signal), name);
+      const trackedState = await readBookmarkState(root, signal);
+      requireWorkspace(trackedState, action);
+      const tracked = local(trackedState, name);
       if (tracked.conflict)
         throw new Error(
           `Now tracking ${name}@${remote}, but the bookmark is conflicted. Resolve its target before pushing.`,
@@ -173,8 +204,11 @@ export async function runBookmarkAction(
     if (
       target.commitId === before.workingCopy.commitId &&
       target.changeId === before.workingCopy.changeId
-    )
+    ) {
+      if (state.workingCopy.changeId !== target.changeId)
+        throw new Error("The workspace is editing a different change. Refresh and try again.");
       return state.workingCopy.commitId;
+    }
     // Explicitly naming a hidden commit can make all() include it; anchor visibility to heads read separately.
     const heads = await revisions(root, "visible_heads()", "@", signal);
     const visible = heads.length
@@ -198,7 +232,7 @@ export async function runBookmarkAction(
       if (action.publish) {
         requireRemote(state, action.remote);
         try {
-          await push(action.name, action.remote);
+          await push(action.name, action.remote, [to]);
         } catch (error) {
           throw new Error(
             `Created “${action.name}” locally, but push failed. ${error instanceof Error ? error.message : String(error)}`,
@@ -230,7 +264,7 @@ export async function runBookmarkAction(
         throw new Error("The branch bookmark changed. Refresh and try again.");
       if (bookmark.conflict)
         throw new Error(`Bookmark “${bookmark.name}” is conflicted. Resolve it before pushing.`);
-      await push(bookmark.name, action.remote);
+      await push(bookmark.name, action.remote, bookmark.targets);
       return `Pushed “${bookmark.name}” to ${action.remote}.`;
     }
     case "fetch":

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test, type TestContext } from "node:test";
@@ -29,7 +29,7 @@ const operation = async (root: string) =>
 const text = (view: ReturnType<typeof patchToView>, side: number) =>
   view.rows.flatMap((row) => row.cells[side]?.spans.map((span) => span.text) ?? []);
 async function fixture(t: TestContext) {
-  const root = await mkdtemp(join(tmpdir(), "jj-review-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "jj-review-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await jj(root, "git", "init", "--no-colocate");
   const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}\n`);

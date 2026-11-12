@@ -16,15 +16,23 @@ single-package project, that keeps releases explicit without a bot committing ba
 2. In GitHub's **Releases → Draft a new release**, create a tag matching the version, such as
    `v0.1.0`, targeting the reviewed commit. Generate release notes and edit them for users. Keeping
    a draft does not publish to npm.
-3. Publish the GitHub Release to create the tag, then choose **Actions → Publish to npm → Run
-   workflow** on `main` and enter that tag. The workflow checks out the tag, verifies the version,
-   installs pinned dependencies and jj, runs formatting/type/lint/test checks, and checks the npm
-   tarball before publishing that same tarball. Stable versions use `latest`; versions such as
-   `0.2.0-beta.1` use `next`. Also mark those versions as prereleases in GitHub.
+3. Publish the GitHub Release to create the tag, then dispatch the workflow **on that tag**, with
+   the same tag as its input:
+
+   ```bash
+   gh workflow run publish.yml --ref v0.1.0 -f tag=v0.1.0
+   ```
+
+   The workflow rejects dispatches from branches, checks out the triggering commit, verifies the
+   version, runs the portability checks below, and checks the npm tarball before publishing that
+   same tarball. Stable versions use `latest`; versions such as `0.2.0-beta.1` use `next`. Also mark
+   those versions as prereleases in GitHub. Dispatching on the tag keeps npm's provenance source
+   commit aligned with the code being published, including when `main` has advanced.
+
 4. Check the Actions result and the npm package page. A GitHub Release can exist even if npm
-   publishing fails. Fix setup errors and rerun the failed job, or use **Actions → Publish to npm →
-   Run workflow** with the existing tag. A published npm version cannot be overwritten; a code fix
-   needs a new version and tag.
+   publishing fails. Fix setup errors and rerun the failed job, or dispatch again using the same
+   `--ref` and `tag` input. A published npm version cannot be overwritten; a code fix needs a new
+   version and tag.
 
 The workflow has read-only repository access and an OIDC identity for npm; it does not change
 versions or push commits or tags. It serializes publishing runs. Paseo compiles the TypeScript
@@ -36,6 +44,43 @@ npm excludes root `pnpm-lock.yaml` files even when listed in `files`. The `prepa
 the tracked lockfile to the generated `install-lock.yaml`, which is included in the tarball. The
 manifest restores it to `pnpm-lock.yaml` before the frozen install. GitHub checkouts use the tracked
 lockfile directly. There is only one maintained dependency lockfile.
+
+## Portability and artifact checks
+
+[Checks](../.github/workflows/checks.yml) runs for pull requests and `main`, and is also required by
+the publishing workflow. It runs formatting, type checking, lint, and the integration tests on
+Ubuntu 24.04, macOS 15, and Windows Server 2025 with Node.js 22.12.0 and 24 and jj 0.47.1. A
+separate Linux job checks the minimum jj 0.46.0. jj is installed by `taiki-e/install-action` through
+its `cargo-binstall` fallback for `jj-cli`, which handles the platform's release archive.
+
+Every job packs the npm artifact, checks its contents, extracts it into a fresh temporary directory,
+and runs the manifest's build commands with `NODE_ENV=production`. It then typechecks both
+entrypoints using only dependencies installed into that extracted package. This exercises the
+lockfile restoration and dependency install used by npm consumers. Publishing repeats that artifact
+check and uploads the exact checked tarball.
+
+Paseo's compiler is internal to the host. To check the actual bundles against an installed host, set
+`PASEO_COMPILER_MODULE` to its `compiler-build.js` file and `PASEO_VERSION` to that host's version
+when running the same artifact check:
+
+```bash
+npm pack --json --pack-destination /tmp > /tmp/pack.json
+PASEO_COMPILER_MODULE=/path/to/paseo/server/plugins/compiler-build.js \
+  PASEO_VERSION=0.15.0 node tools/check-package.mjs /tmp/pack.json
+```
+
+Before publishing, run the host compilation check above, confirm the portability jobs have passed,
+and smoke-test these flows in Paseo:
+
+- Install the packed plugin and open a diff; switch changes and repositories while files load.
+- Select a linear range with Shift-click, expand context, and switch between inline and split diffs.
+- Copy from each split column and confirm line numbers and the other column are excluded.
+- Resize columns, reload the tab, and confirm the layout and comparison are restored.
+- Refresh while a repository is unavailable and confirm the error is visible.
+- Create, tug, and push a bookmark; check dialog success and failure handling.
+- Create and archive a workspace with setup and teardown commands.
+
+CI does not exercise the running UI, npm authentication, or GitHub's environment rules.
 
 ## npm setup and first publication
 
@@ -68,8 +113,8 @@ before approval.
 
 After the initial version is published:
 
-1. Create a GitHub environment named `release` in this repository. Restrict it to release tags if
-   desired; account for manual retries running the workflow from `main`.
+1. Create a GitHub environment named `release` in this repository. Restrict deployment branches and
+   tags to tags matching `v*`; publishing and retries run on the version tag.
 2. On npm, open **paseo-jj-companion → Settings → Trusted publishing** and add GitHub Actions:
    - Organization or user: `wuzzeb`
    - Repository: `jj-companion-paseo`

@@ -17,8 +17,8 @@ Paseo.
 
 - Paseo 0.15.0 or later, with plugins enabled (`pluginsEnabled: true` in its config).
 - jj 0.46.0 or later and Git 2.42 or later on the daemon's PATH.
-- Node.js 22 or later and pnpm on the daemon's PATH for dependency installation. The repository pins
-  pnpm 12.13.0 in `package.json`.
+- Node.js 22.12 or later and pnpm on the daemon's PATH for dependency installation. The repository
+  pins pnpm 12.13.0 in `package.json`.
 - A jj repository, either colocated or non-colocated.
 
 Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
@@ -285,7 +285,7 @@ saved with the new agent; existing agents need to be recreated to receive them.
 
 ## Development
 
-For development (Node.js 22 or later, plus jj):
+For development (Node.js 22.12 or later, plus jj):
 
 ```bash
 pnpm install --frozen-lockfile
@@ -298,7 +298,10 @@ pnpm test
 The small JayJay source subset is vendored under `client/vendor/jayjay`, with its Apache-2.0 license
 and pinned revision in [NOTICE.md](client/vendor/jayjay/NOTICE.md). Its styles are embedded in
 JavaScript; no worker, WASM build, or nested checkout is needed. `tools/vendor-jayjay.mjs`
-regenerates the subset from a separate JayJay jj checkout when updating it.
+regenerates the subset from a separate JayJay jj checkout when updating it. After regeneration, run
+`pnpm typecheck` and `pnpm test` as well as formatting: upstream model changes must remain
+compatible with the shared diff contract. `client/jayjay-diff.tsx` owns the renderer, CSS, theme
+bridge, and split-column selection behavior; the review panel only consumes the file pane.
 
 The ignored `paseo/`, `jayjay/`, and `jjui/` directories are reference checkouts used during
 research, not plugin dependencies. Local Codex sandbox preferences belong in your own configuration;

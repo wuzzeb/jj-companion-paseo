@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { RpcInput } from "@getpaseo/plugin";
 import {
@@ -9,7 +7,7 @@ import {
   bookmarkStateRpc,
   type BookmarkOperation,
 } from "../shared/bookmarks.js";
-import { resolveRepository } from "./repository.js";
+import { resolveRepository, sharedRepositoryPath } from "./repository.js";
 import { readBookmarkState, runBookmarkAction } from "./bookmarks.js";
 
 async function workspaceRoot(
@@ -20,15 +18,6 @@ async function workspaceRoot(
   const workspace = await paseo.workspaces.ref(workspaceId).refresh();
   if (!workspace || workspace.archivingAt) throw new Error("Workspace is unavailable.");
   return resolveRepository(workspace.workspaceDirectory, repository);
-}
-
-async function repositoryKey(root: string) {
-  const path = join(root, ".jj", "repo");
-  return realpath(
-    (await stat(path)).isDirectory()
-      ? path
-      : resolve(dirname(path), (await readFile(path, "utf8")).trim()),
-  );
 }
 
 export function createBookmarkOperations() {
@@ -50,7 +39,7 @@ export function createBookmarkOperations() {
       lifetime.signal.throwIfAborted();
       const root = await workspaceRoot(workspaceId, context, repository);
       if (!root) throw new Error("This workspace is not in a jj repository.");
-      const key = await repositoryKey(root);
+      const key = await sharedRepositoryPath(root);
       for (const [id, entry] of operations) {
         if (operations.size < 100) break;
         if (["succeeded", "failed"].includes(entry.operation.status)) operations.delete(id);
@@ -66,7 +55,7 @@ export function createBookmarkOperations() {
           try {
             lifetime.signal.throwIfAborted();
             const currentRoot = await workspaceRoot(workspaceId, context, repository);
-            if (currentRoot !== root || (await repositoryKey(currentRoot)) !== key)
+            if (currentRoot !== root || (await sharedRepositoryPath(currentRoot)) !== key)
               throw new Error(
                 "The workspace repository changed while this operation was queued. Refresh and try again.",
               );

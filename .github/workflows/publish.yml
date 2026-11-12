@@ -16,7 +16,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check-ref:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require dispatch on the release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != tag || "$GITHUB_REF_NAME" != "$RELEASE_TAG" ]]; then
+            echo 'Dispatch this workflow on the release tag, with the same tag input.' >&2
+            exit 1
+          fi
+
+  checks:
+    needs: check-ref
+    uses: ./.github/workflows/checks.yml
+
   publish:
+    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: release
@@ -29,7 +46,6 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v6
         with:
-          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -57,57 +73,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
 
-      - name: Install jj for the test suite
-        run: |
-          mkdir -p "$RUNNER_TEMP/jj"
-          curl --fail --location --retry 3 \
-            https://github.com/jj-vcs/jj/releases/download/v0.46.0/jj-v0.46.0-x86_64-unknown-linux-musl.tar.gz \
-            --output "$RUNNER_TEMP/jj.tar.gz"
-          tar -xzf "$RUNNER_TEMP/jj.tar.gz" -C "$RUNNER_TEMP/jj"
-          "$RUNNER_TEMP/jj/jj" --version
-          echo "$RUNNER_TEMP/jj" >> "$GITHUB_PATH"
-
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check formatting
-        run: pnpm format:check
-
-      - name: Check types
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Test
-        run: pnpm test
-
       # Paseo compiles the shipped TypeScript after running the manifest's build command.
       - name: Pack and check the release artifact
         id: pack
         run: |
           npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.json"
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import { appendFileSync, readFileSync } from 'node:fs';
-          import { join } from 'node:path';
-          const result = JSON.parse(readFileSync(join(process.env.RUNNER_TEMP, 'pack.json'), 'utf8'));
-          const [pkg] = Array.isArray(result) ? result : Object.values(result);
-          const files = new Set(pkg.files.map(file => file.path));
-          for (const file of [
-            'package.json', 'paseo-plugin.json', 'OVERVIEW.md', 'README.md', 'LICENSE',
-            'index.server.ts', 'index.client.tsx', 'install-lock.yaml', 'pnpm-workspace.yaml',
-            'client/vendor/jayjay/LICENSE', 'client/vendor/jayjay/NOTICE.md',
-          ]) assert(files.has(file), `Missing package file: ${file}`);
-          const manifest = JSON.parse(readFileSync('paseo-plugin.json', 'utf8'));
-          for (const file of [manifest.icon, ...(manifest.media ?? [])].filter(Boolean)) {
-            if (!file.startsWith('https://')) assert(files.has(file), `Missing plugin asset: ${file}`);
-          }
-          assert(![...files].some(file => /(?:^|\/)(?:node_modules|\.github|\.codex)\//.test(file)
-            || file.endsWith('.test.ts')), 'Package contains development-only files');
-          appendFileSync(process.env.GITHUB_OUTPUT,
-            `tarball=${join(process.env.RUNNER_TEMP, pkg.filename)}\n`);
-          NODE
+          node tools/check-package.mjs "$RUNNER_TEMP/pack.json"
 
       - name: Publish with npm trusted publishing
         env:

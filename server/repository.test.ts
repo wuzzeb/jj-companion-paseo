@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { listRepositories, resolveRepository } from "./repository.js";
 
 async function fixture(t: TestContext) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-repositories-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-jj-repositories-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const root = join(directory, "project");
   await mkdir(join(root, ".jj"), { recursive: true });
@@ -40,9 +40,13 @@ test("selection rejects missing, deep, traversing, and symlinked repositories", 
   const { directory, root } = await fixture(t);
   const outside = join(directory, "outside");
   await mkdir(join(outside, ".jj"), { recursive: true });
-  await symlink(outside, join(root, "linked"), "dir");
+  await symlink(outside, join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
   await mkdir(join(root, "linked-marker"));
-  await symlink(join(outside, ".jj"), join(root, "linked-marker", ".jj"), "dir");
+  await symlink(
+    join(outside, ".jj"),
+    join(root, "linked-marker", ".jj"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
   assert.deepEqual(await listRepositories(root), [{ id: ".", label: "project" }]);
   for (const selection of [
     "missing",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test, type TestContext } from "node:test";
@@ -39,7 +39,7 @@ const local = (state: BookmarkState, name: string) =>
   state.bookmarks.find((bookmark) => bookmark.remote === null && bookmark.name === name)!;
 
 async function repository(t: TestContext, colocated = true) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-bookmarks-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-jj-bookmarks-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repo = join(directory, "repo");
   const remote = join(directory, "remote.git");
@@ -516,6 +516,79 @@ test("workspace actions reject a changed checkout and push rejects a moved sourc
   await assert.rejects(
     runBookmarkAction(repo, { kind: "push", subject: workspace(current), remote: "origin" }),
     /moved since/,
+  );
+});
+
+for (const kind of ["push", "move", "rename", "delete"] as const) {
+  test(`${kind} rejects a Git bookmark move imported by the action's snapshot`, async (t) => {
+    const { repo, remote } = await repository(t);
+    const original = await feature(repo);
+    await jj(repo, "new", "-m", "unreviewed descendant");
+    await writeFile(join(repo, "feature.txt"), "unreviewed\n");
+    await jj(repo, "util", "snapshot");
+    const current = await readBookmarkState(repo);
+    await execFileAsync("git", ["update-ref", "refs/heads/feature", current.workingCopy.commitId], {
+      cwd: repo,
+    });
+    // Read-only state has not imported Git's update yet.
+    const expectedTargets = local(original, "feature").targets;
+    assert.deepEqual(local(await readBookmarkState(repo), "feature").targets, expectedTargets);
+    const action: BookmarkAction =
+      kind === "push"
+        ? {
+            kind,
+            subject: { kind: "bookmark", name: "feature", expectedTargets },
+            remote: "origin",
+          }
+        : kind === "move"
+          ? { kind, name: "feature", expectedTargets, target: workspace(current) }
+          : kind === "rename"
+            ? { kind, name: "feature", expectedTargets, newName: "renamed" }
+            : { kind, name: "feature", expectedTargets };
+    await assert.rejects(runBookmarkAction(repo, action), /moved since it was displayed/);
+    assert.deepEqual(local(await readBookmarkState(repo), "feature").targets, [
+      current.workingCopy.commitId,
+    ]);
+    await assert.rejects(
+      execFileAsync("git", ["--git-dir", remote, "show-ref", "--verify", "refs/heads/feature"]),
+      { code: 128 },
+    );
+  });
+}
+
+test("push accepts the working-copy rewrite caused by snapshotting pending edits", async (t) => {
+  const { repo, remote } = await repository(t);
+  const original = await feature(repo);
+  await writeFile(join(repo, "feature.txt"), "pending edits\n");
+  await runBookmarkAction(repo, { kind: "push", subject: workspace(original), remote: "origin" });
+  const current = await readBookmarkState(repo);
+  const target = local(current, "feature").targets[0];
+  assert.notEqual(target, local(original, "feature").targets[0]);
+  assert.equal(current.workingCopy.changeId, original.workingCopy.changeId);
+  const { stdout } = await execFileAsync("git", [
+    "--git-dir",
+    remote,
+    "show",
+    "refs/heads/feature:feature.txt",
+  ]);
+  assert.equal(stdout, "pending edits\n");
+});
+
+test("workspace actions reject a Git checkout imported by the action's snapshot", async (t) => {
+  const { repo } = await repository(t);
+  const original = await feature(repo);
+  await execFileAsync("git", ["checkout", "--force", "--detach", "feature"], { cwd: repo });
+  await assert.rejects(
+    runBookmarkAction(repo, {
+      kind: "tug",
+      name: "feature",
+      workingCopyChangeId: original.workingCopy.changeId,
+    }),
+    /editing a different change/,
+  );
+  assert.deepEqual(
+    local(await readBookmarkState(repo), "feature").targets,
+    local(original, "feature").targets,
   );
 });
 

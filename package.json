@@ -29,11 +29,11 @@
   },
   "scripts": {
     "prepack": "node --input-type=module -e \"import { copyFileSync } from 'node:fs'; copyFileSync('pnpm-lock.yaml', 'install-lock.yaml');\"",
-    "test": "tsx --test server/*.test.ts client/*.test.ts",
+    "test": "node tools/test.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "lint": "oxlint index.server.ts index.client.tsx server client shared",
-    "format": "oxfmt index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore",
-    "format:check": "oxfmt --check index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore"
+    "lint": "oxlint index.server.ts index.client.tsx server client shared tools/check-package.mjs tools/test.mjs",
+    "format": "oxfmt index.server.ts index.client.tsx server client shared tools/check-package.mjs tools/test.mjs package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore",
+    "format:check": "oxfmt --check index.server.ts index.client.tsx server client shared tools/check-package.mjs tools/test.mjs package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore"
   },
   "devDependencies": {
     "@getpaseo/client": "0.15.0",
@@ -52,7 +52,7 @@
     "zod": "^4.4.3"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "packageManager": "pnpm@12.13.0"
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Text } from "react-native";
 import {
@@ -10,20 +10,15 @@ import {
 import { z } from "zod";
 import { repositoriesRpc, repositorySelectionSchema } from "../shared/repositories.js";
 import {
-  reviewFileRpc,
   reviewOpenRpc,
-  type ReviewFile,
   type ReviewSnapshot,
   reviewTargetSchema,
   reviewTargetLabel,
   branchReview,
   type ReviewTarget,
 } from "../shared/review.js";
-import { DiffPane } from "./vendor/jayjay/components/diff/DiffPane.js";
-import { diffCss } from "./vendor/jayjay/styles.js";
+import { FilePane } from "./review-file-pane.js";
 import { reviewCss } from "./review-styles.js";
-import { collapseContext } from "./review-context.js";
-import { inlineDiff } from "./review-layout.js";
 import { ChangeList } from "./change-list.js";
 import { ReviewFiles } from "./review-files.js";
 import { ResizableColumn, columnDividerWidth } from "./resizable-column.js";
@@ -47,15 +42,6 @@ const stateSchema = z
     historyLimit: z.number().int().min(historyLimit).max(maxHistoryLimit).default(historyLimit),
   })
   .readonly();
-const labels = {
-  before: "Before",
-  after: "After",
-  added: "Added",
-  removed: "Removed",
-  eof: "No newline at end of file",
-  empty: "No textual changes",
-  showAll: "Show all",
-};
 
 export function ReviewPanel(props: PluginWorkspacePanelProps) {
   const directory = useWorkspace(props.workspaceId, (workspace) => workspace.directory);
@@ -91,7 +77,6 @@ function Review({
     historyLimit,
   });
   const queryClient = useQueryClient();
-  const [copySide, setCopySide] = useState<"old" | "new" | null>(null);
   const listRepositories = useRpc(repositoriesRpc);
   const open = useRpc(reviewOpenRpc);
   const repositories = useQuery({
@@ -130,18 +115,16 @@ function Review({
   const file = data?.files.find((entry) => entry.path === state.path) ?? data?.files[0];
   const { colors } = theme;
   const variables = {
-    "--jj-page": colors.surface0,
-    "--jj-surface": colors.surface1,
+    "--review-page": colors.surface0,
+    "--review-surface": colors.surface1,
     "--review-hover": colors.surface2,
-    "--jj-ink": colors.foreground,
-    "--jj-muted": colors.foregroundMuted,
-    "--jj-border": colors.border,
-    "--jj-accent": colors.accent,
-    "--jj-added-ink": colors.statusSuccess,
-    "--jj-removed-ink": colors.statusDanger,
-    "--jj-added-bg": `color-mix(in srgb, ${colors.statusSuccess} 12%, ${colors.surface0})`,
-    "--jj-removed-bg": `color-mix(in srgb, ${colors.statusDanger} 12%, ${colors.surface0})`,
-    "--jj-mono": "var(--fontFamily-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
+    "--review-ink": colors.foreground,
+    "--review-muted": colors.foregroundMuted,
+    "--review-border": colors.border,
+    "--review-accent": colors.accent,
+    "--review-added-ink": colors.statusSuccess,
+    "--review-removed-ink": colors.statusDanger,
+    "--review-mono": "var(--fontFamily-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
   } as CSSProperties;
   const select = (target: ReviewTarget) => {
     setState({ ...state, target, path: null, generation: state.generation + 1 });
@@ -153,23 +136,8 @@ function Review({
     if (repositories.isSuccess && repositories.data.length > 0) void comparison.refetch();
   };
   return (
-    <div
-      className="paseo-jj-review jayjay-review"
-      style={variables}
-      data-copy-side={copySide ?? undefined}
-      data-diff-layout={state.diffLayout}
-      onPointerDownCapture={(event) => {
-        if (state.diffLayout !== "split") return;
-        const target =
-          event.target instanceof Element ? event.target.closest(".jj-diff-cell") : null;
-        const side = target ? (target.previousElementSibling ? "new" : "old") : null;
-        // A DOM selection crosses both columns, even when CSS excludes one from copying.
-        if (side && side !== copySide)
-          event.currentTarget.ownerDocument.getSelection()?.removeAllRanges();
-        setCopySide(side);
-      }}
-    >
-      <style>{diffCss + reviewCss}</style>
+    <div className="paseo-jj-review" style={variables}>
+      <style>{reviewCss}</style>
       <div className="review-layout">
         <ResizableColumn
           className="review-changes"
@@ -288,7 +256,6 @@ function Review({
                 file={file}
                 split={state.diffLayout === "split"}
                 onToggleLayout={() => {
-                  setCopySide(null);
                   setState({
                     ...state,
                     diffLayout: state.diffLayout === "split" ? "inline" : "split",
@@ -319,84 +286,6 @@ function ChangeDescription({ change }: { readonly change: NonNullable<ReviewSnap
           <span className="review-error">This change has conflicts.</span>
         ) : null}
       </div>
-    </section>
-  );
-}
-
-function FilePane({
-  hostId,
-  workspaceId,
-  repository,
-  snapshot,
-  file,
-  split,
-  onToggleLayout,
-}: {
-  readonly hostId: string;
-  readonly workspaceId: string;
-  readonly repository: string;
-  readonly snapshot: ReviewSnapshot;
-  readonly file: ReviewFile;
-  readonly split: boolean;
-  readonly onToggleLayout: () => void;
-}) {
-  const read = useRpc(reviewFileRpc);
-  const [showAll, setShowAll] = useState(false);
-  const query = useQuery({
-    queryKey: ["jj-review-file", hostId, workspaceId, repository, snapshot, file.path],
-    queryFn: () => read({ workspaceId, repository, snapshot, path: file.path }),
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    retry: false,
-  });
-  const complete = query.data?.view;
-  const collapsed = useMemo(() => (complete ? collapseContext(complete) : undefined), [complete]);
-  const hasContext = collapsed?.rows.some((row) => row.cells[0]?.style === "separator");
-  const contextView = showAll ? complete : collapsed;
-  const view = useMemo(
-    () => (contextView && !split ? inlineDiff(contextView) : contextView),
-    [contextView, split],
-  );
-  return (
-    <section className="review-file-pane" aria-label={`Diff for ${file.path}`}>
-      <div className="review-file-header">
-        <span className="review-path" data-pmono="">
-          {file.oldPath === file.path ? file.path : `${file.oldPath} → ${file.path}`}
-        </span>
-        {complete ? (
-          <span className="review-stats">
-            <span className="review-stats-added">+{complete.added}</span>{" "}
-            <span className="review-stats-removed">−{complete.removed}</span>
-          </span>
-        ) : null}
-        {hasContext ? (
-          <IconButton
-            icon={showAll ? "FoldVertical" : "UnfoldVertical"}
-            label="Show all context"
-            title={showAll ? "Collapse unchanged context" : "Show all context"}
-            pressed={showAll}
-            onClick={() => setShowAll(!showAll)}
-          />
-        ) : null}
-        <IconButton
-          onClick={onToggleLayout}
-          label={split ? "Show inline diff" : "Show side-by-side diff"}
-          icon={split ? "Rows2" : "Columns2"}
-        />
-      </div>
-      {query.error ? (
-        <div role="alert" className="review-message review-error">
-          {query.error.message}
-        </div>
-      ) : null}
-      {query.isPending ? <div className="review-message">Loading diff…</div> : null}
-      {query.data?.notice ? <div className="review-notice">{query.data.notice}</div> : null}
-      {view && view.rows.length > 0 ? (
-        <div className="review-code" data-pmono="">
-          <DiffPane view={view} split={split} showAll={() => setShowAll(true)} labels={labels} />
-        </div>
-      ) : null}
     </section>
   );
 }

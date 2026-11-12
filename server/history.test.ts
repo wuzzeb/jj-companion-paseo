@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test, type TestContext } from "node:test";
@@ -24,7 +24,7 @@ async function jj(cwd: string, ...args: string[]) {
 }
 
 async function repository(t: TestContext, colocated = true) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-history-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-jj-history-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repo = join(directory, "repo");
   await mkdir(repo);
@@ -114,7 +114,7 @@ test("refresh leaves unsnapshotted files and the operation log unchanged", async
 });
 
 test("ordinary directories and Git-only repositories have an explicit empty state", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-no-jj-history-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-no-jj-history-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
   assert.deepEqual(await readHistory(directory, 200), { status: "not_jj" });
   await execFileAsync("git", ["init", directory]);

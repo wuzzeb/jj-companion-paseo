@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   symlink,
@@ -41,7 +42,7 @@ async function jj(cwd: string, ...args: string[]) {
 }
 
 async function fixture(t: TestContext) {
-  const directory = await mkdtemp(join(tmpdir(), "paseo-jj-companion-test-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-jj-companion-test-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repo = join(directory, "My app");
   const workspacesRoot = join(directory, "workspaces");
@@ -85,7 +86,7 @@ test("Codex roots preserve config and agent roots and include the exact linked G
   const workspace = join(directory, "linked workspace");
   await jj(repo, "workspace", "add", workspace);
   const alias = join(directory, "linked-alias");
-  await symlink(workspace, alias);
+  await symlink(workspace, alias, process.platform === "win32" ? "junction" : "dir");
   const commonGit = join(repo, ".git");
   const { stdout } = await execFileAsync("git", ["rev-parse", "--absolute-git-dir"], {
     cwd: workspace,
@@ -130,7 +131,7 @@ test("Codex roots preserve config and agent roots and include the exact linked G
             commonGit,
             "/agent-cache",
             join(repo, ".jj"),
-            stdout.trim(),
+            await realpath(stdout.trim()),
           ],
         },
       },
@@ -227,7 +228,7 @@ for (const colocated of [true, false]) {
   test(`Local preserves the selected jj working copy without setup (${colocated ? "colocated" : "non-colocated"})`, async (t) => {
     const { directory, repo, workspacesRoot } = await repository(t, colocated);
     const alias = join(directory, "local-alias");
-    await symlink(repo, alias);
+    await symlink(repo, alias, process.platform === "win32" ? "junction" : "dir");
     await writeFile(join(repo, "paseo.json"), JSON.stringify({ worktree: { setup: "exit 7" } }));
     const operation = await jj(repo, "op", "log", "--limit", "1", "--no-graph", "-T", "id");
     for (const path of [repo, join(alias, "package")]) {
@@ -307,7 +308,7 @@ test("New worktree creates a registered jj workspace from the source parents and
   const gitRoot = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
     cwd: destination,
   });
-  assert.equal(gitRoot.stdout.trim(), destination);
+  assert.equal(await realpath(gitRoot.stdout.trim()), destination);
   assert.equal(await readFile(join(repo, "base.txt"), "utf8"), "uncommitted\n");
   assert.equal(
     await jj(destination, "log", "--no-graph", "-r", "@-", "-T", "commit_id"),
@@ -318,7 +319,7 @@ test("New worktree creates a registered jj workspace from the source parents and
 test("preserves a subdirectory selected through a symlink in a non-colocated repository", async (t) => {
   const { directory, repo, workspacesRoot } = await repository(t, false);
   const link = join(directory, "repo-link");
-  await symlink(repo, link);
+  await symlink(repo, link, process.platform === "win32" ? "junction" : "dir");
   const result = await createWorkspace({
     request: { source: { kind: "worktree", cwd: join(link, "package"), projectId: "project" } },
     ...options(repo, workspacesRoot),
@@ -391,7 +392,7 @@ test("surfaces jj failures instead of falling back to the source directory", asy
       request: { source: { kind: "worktree", cwd: repo } },
       ...options(repo, workspacesRoot),
     }),
-    /Command failed/,
+    /jj|repository/,
   );
   await assert.rejects(readdir(workspacesRoot), { code: "ENOENT" });
 });
@@ -438,6 +439,13 @@ async function managedWorkspace(t: TestContext, colocated = true) {
 }
 
 function nodeCommand(script: string): string {
+  if (process.platform === "win32") {
+    const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    // Base64 avoids PowerShell/native argument quoting changing the JavaScript source.
+    const encoded = Buffer.from(script).toString("base64");
+    const evaluate = `eval(Buffer.from('${encoded}','base64').toString())`;
+    return `& ${quote(process.execPath)} -e ${quote(evaluate)}`;
+  }
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   return `${quote(process.execPath)} -e ${quote(script)}`;
 }
@@ -469,9 +477,16 @@ for (const colocated of [true, false]) {
       JSON.stringify({
         worktree: {
           setup: colocated
-            ? [" ", nodeCommand(recordEnvironment), "test -f setup.json", ""]
+            ? [
+                " ",
+                nodeCommand(recordEnvironment),
+                nodeCommand("require('node:fs').accessSync('setup.json')"),
+                "",
+              ]
             : nodeCommand(recordEnvironment),
-          teardown: colocated ? teardown : ["test -f setup.json", teardown],
+          teardown: colocated
+            ? teardown
+            : [nodeCommand("require('node:fs').accessSync('setup.json')"), teardown],
         },
       }),
     );
@@ -512,7 +527,15 @@ test("stops failed setup commands and preserves the owned workspace for recovery
   const { repo, workspacesRoot } = await repository(t);
   await writeFile(
     join(repo, "paseo.json"),
-    JSON.stringify({ worktree: { setup: ["touch started", "exit 7", "touch should-not-run"] } }),
+    JSON.stringify({
+      worktree: {
+        setup: [
+          nodeCommand("require('node:fs').writeFileSync('started', '')"),
+          "exit 7",
+          nodeCommand("require('node:fs').writeFileSync('should-not-run', '')"),
+        ],
+      },
+    }),
   );
   await jj(repo, "new", "-m", "lifecycle config is in the parent");
   await assert.rejects(
@@ -586,49 +609,95 @@ test("rejects malformed lifecycle configuration instead of skipping setup", asyn
   }
 });
 
-test("cancels a running setup command and its shell children", async (t) => {
-  const { repo } = await fixture(t);
-  const controller = new AbortController();
-  const script = `
+test(
+  "cancels a running setup command and its shell children",
+  {
+    skip: process.platform === "win32" ? "Unix shell and graceful SIGTERM behavior" : false,
+  },
+  async (t) => {
+    const { repo } = await fixture(t);
+    const controller = new AbortController();
+    const script = `
     const fs = require('node:fs');
     process.once('SIGTERM', () => { fs.writeFileSync('stopped', 'yes'); process.exit(0); });
     fs.writeFileSync('ready', 'yes');
     setInterval(() => {}, 1000);
   `;
-  await writeFile(
-    join(repo, "paseo.json"),
-    JSON.stringify({ worktree: { setup: `${nodeCommand(script)} & wait` } }),
-  );
-  const running = runWorktreeLifecycle({
-    phase: "setup",
-    directory: repo,
-    sourceDirectory: repo,
-    name: "quiet-jay",
-    signal: controller.signal,
-  });
-  try {
+    await writeFile(
+      join(repo, "paseo.json"),
+      JSON.stringify({ worktree: { setup: `${nodeCommand(script)} & wait` } }),
+    );
+    const running = runWorktreeLifecycle({
+      phase: "setup",
+      directory: repo,
+      sourceDirectory: repo,
+      name: "quiet-jay",
+      signal: controller.signal,
+    });
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await readFile(join(repo, "ready"));
+          break;
+        } catch (error) {
+          if (attempt >= 100) throw error;
+          await delay(10);
+        }
+      }
+    } finally {
+      controller.abort();
+    }
+    await assert.rejects(running, { name: "AbortError" });
     for (let attempt = 0; ; attempt++) {
       try {
-        await readFile(join(repo, "ready"));
+        assert.equal(await readFile(join(repo, "stopped"), "utf8"), "yes");
         break;
       } catch (error) {
         if (attempt >= 100) throw error;
         await delay(10);
       }
     }
+  },
+);
+
+test("setup cancellation waits until a command ignoring SIGTERM is terminated", async (t) => {
+  const { repo } = await fixture(t);
+  const controller = new AbortController();
+  await writeFile(
+    join(repo, "paseo.json"),
+    JSON.stringify({
+      worktree: {
+        setup: nodeCommand(`
+          process.on('SIGTERM', () => {});
+          require('node:fs').writeFileSync('ready', String(process.pid));
+          setInterval(() => {}, 1000);
+        `),
+      },
+    }),
+  );
+  const running = runWorktreeLifecycle({
+    phase: "setup",
+    directory: repo,
+    sourceDirectory: repo,
+    name: "resistant-jay",
+    signal: controller.signal,
+  });
+  let pid = 0;
+  try {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        pid = Number(await readFile(join(repo, "ready"), "utf8"));
+        break;
+      } catch {
+        await delay(20);
+      }
+    }
+    assert.ok(pid > 0, "the command must be ready before cancellation");
   } finally {
     controller.abort();
   }
   await assert.rejects(running, { name: "AbortError" });
-  for (let attempt = 0; ; attempt++) {
-    try {
-      assert.equal(await readFile(join(repo, "stopped"), "utf8"), "yes");
-      break;
-    } catch (error) {
-      if (attempt >= 100) throw error;
-      await delay(10);
-    }
-  }
+  assert.throws(() => process.kill(pid, 0), "the hook must wait for process termination");
 });
 
 test("retries name collisions without modifying existing directories or workspace registrations", async (t) => {
@@ -707,7 +776,7 @@ for (const colocated of [true, false]) {
       const gitWorktrees = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
         cwd: repo,
       });
-      assert.equal(gitWorktrees.stdout.includes(destination), false);
+      assert.equal(gitWorktrees.stdout.includes(destination.replaceAll("\\", "/")), false);
     }
     await archiveWorkspace(archiveOptions(destination, workspacesRoot));
     assert.equal(await readFile(join(repo, "base.txt"), "utf8"), "uncommitted\n");
@@ -717,7 +786,7 @@ for (const colocated of [true, false]) {
 test("keeps a shared directory until its last active workspace is archived, including background and later pages", async (t) => {
   const { destination, workspacesRoot } = await managedWorkspace(t);
   const alias = join(workspacesRoot, "alias");
-  await symlink(destination, alias);
+  await symlink(destination, alias, process.platform === "win32" ? "junction" : "dir");
   const calls: PaseoWorkspaceListOptions[] = [];
   await archiveWorkspace({
     ...archiveOptions(destination, workspacesRoot),
@@ -859,7 +928,7 @@ test("refuses cleanup when pagination cannot prove there are no active reference
 test("preserves active references through symlinks even when the working subdirectory is missing", async (t) => {
   const { destination, workspacesRoot } = await managedWorkspace(t);
   const alias = join(workspacesRoot, "alias");
-  await symlink(destination, alias);
+  await symlink(destination, alias, process.platform === "win32" ? "junction" : "dir");
   await rm(join(destination, "package"), { recursive: true });
   await archiveWorkspace({
     ...archiveOptions(destination, workspacesRoot),
@@ -900,7 +969,7 @@ test("rolls back a new jj workspace if writing its ownership marker fails", asyn
   const gitWorktrees = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
     cwd: repo,
   });
-  assert.equal(gitWorktrees.stdout.includes(workspacesRoot), false);
+  assert.equal(gitWorktrees.stdout.includes(workspacesRoot.replaceAll("\\", "/")), false);
 });
 
 test("rolls back a new workspace if creation is canceled after jj workspace add succeeds", async (t) => {

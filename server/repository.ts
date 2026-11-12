@@ -1,6 +1,16 @@
-import { lstat, readdir, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Repository } from "../shared/repositories.js";
+
+// The primary workspace stores a directory here; linked workspaces store a path.
+export async function sharedRepositoryPath(root: string): Promise<string> {
+  const path = join(root, ".jj", "repo");
+  return realpath(
+    (await stat(path)).isDirectory()
+      ? path
+      : resolve(dirname(path), (await readFile(path, "utf8")).trim()),
+  );
+}
 
 export async function findJjRoot(path: string): Promise<string | null> {
   let current = path;

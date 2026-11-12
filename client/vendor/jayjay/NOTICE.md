@@ -17,4 +17,6 @@ Regenerate from a source checkout with:
 ```sh
 node tools/vendor-jayjay.mjs /path/to/jayjay
 pnpm exec oxfmt client/vendor/jayjay
+pnpm typecheck
+pnpm test
 ```

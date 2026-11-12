@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
-import { mkdir, readFile, realpath, rmdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { promisify } from "node:util";
 import { z } from "zod";
 import type {
   PluginHookRequests,
@@ -12,9 +10,9 @@ import type {
 import { createNameId } from "./names.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
 import { readCodexWritableRoots } from "./codex-config.js";
-import { findJjRoot } from "./repository.js";
+import { findJjRoot, sharedRepositoryPath } from "./repository.js";
+import { runSubprocess } from "./subprocess.js";
 
-const execFileAsync = promisify(execFile);
 const ownershipSchema = z
   .object({
     version: z.literal(1),
@@ -30,24 +28,26 @@ type WorkspaceRequest = PluginHookRequests["workspace.create.before"];
 type ListWorkspaces = PluginHookContext["paseo"]["workspaces"]["list"];
 type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
 type WorkspacePage = Pick<WorkspaceListResult, "pageInfo"> & {
-  entries: Pick<WorkspaceListResult["entries"][number], "workspaceDirectory">[];
+  readonly entries: ReadonlyArray<
+    Pick<WorkspaceListResult["entries"][number], "workspaceDirectory">
+  >;
 };
 type WorkspaceListOptions = NonNullable<Parameters<ListWorkspaces>[0]>;
 
 interface CreateWorkspaceOptions {
-  request: WorkspaceRequest;
-  signal: AbortSignal;
-  listProjects: PluginHookContext["paseo"]["projects"]["list"];
-  workspacesRoot?: string;
-  generateName?: () => string;
-  writeMarker?: typeof writeFile;
+  readonly request: WorkspaceRequest;
+  readonly signal: AbortSignal;
+  readonly listProjects: PluginHookContext["paseo"]["projects"]["list"];
+  readonly workspacesRoot?: string;
+  readonly generateName?: () => string;
+  readonly writeMarker?: typeof writeFile;
 }
 
 interface ArchiveWorkspaceOptions {
-  workspace: PluginHookWorkspace;
-  signal: AbortSignal;
-  listWorkspaces: (options: WorkspaceListOptions) => Promise<WorkspacePage>;
-  workspacesRoot?: string;
+  readonly workspace: PluginHookWorkspace;
+  readonly signal: AbortSignal;
+  readonly listWorkspaces: (options: WorkspaceListOptions) => Promise<WorkspacePage>;
+  readonly workspacesRoot?: string;
 }
 
 function defaultWorkspacesRoot(): string {
@@ -83,12 +83,17 @@ async function resolveWorkspacePath(path: string): Promise<string> {
 
 async function jj(cwd: string, signal: AbortSignal, ...args: string[]): Promise<string> {
   signal.throwIfAborted();
-  const { stdout } = await execFileAsync("jj", ["--no-pager", "--color=never", ...args], {
-    cwd,
-    signal,
-    timeout: 25_000,
-    maxBuffer: 1024 * 1024,
-  });
+  const stdout = await runSubprocess(
+    "jj",
+    ["--no-pager", "--color=never", "--config=ui.interactive=false", ...args],
+    {
+      cwd,
+      signal,
+      timeoutMs: 25_000,
+      maxOutputBytes: 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" },
+    },
+  );
   return stdout.trim();
 }
 
@@ -97,9 +102,9 @@ export async function configureCodexAgent({
   signal,
   readWritableRoots = readCodexWritableRoots,
 }: {
-  request: PluginHookRequests["agent.create.before"];
-  signal: AbortSignal;
-  readWritableRoots?: typeof readCodexWritableRoots;
+  readonly request: PluginHookRequests["agent.create.before"];
+  readonly signal: AbortSignal;
+  readonly readWritableRoots?: typeof readCodexWritableRoots;
 }): Promise<PluginHookRequests["agent.create.before"]> {
   signal.throwIfAborted();
   if (request.config.provider !== "codex") return request;
@@ -107,13 +112,10 @@ export async function configureCodexAgent({
   const root = await findJjRoot(cwd);
   if (!root) return request;
 
-  const repoPath = join(root, ".jj", "repo");
-  const repo = (await stat(repoPath)).isDirectory()
-    ? await realpath(repoPath)
-    : await realpath(resolve(root, ".jj", (await readFile(repoPath, "utf8")).trim()));
+  const repo = await sharedRepositoryPath(root);
   const roots = [dirname(repo)];
   if (await optionalRealpath(join(root, ".git"))) {
-    const { stdout } = await execFileAsync(
+    const stdout = await runSubprocess(
       "git",
       [
         "--no-optional-locks",
@@ -122,7 +124,7 @@ export async function configureCodexAgent({
         "--git-common-dir",
         "--git-dir",
       ],
-      { cwd: root, signal, timeout: 25_000, maxBuffer: 1024 * 1024 },
+      { cwd: root, signal, timeoutMs: 25_000, maxOutputBytes: 1024 * 1024 },
     );
     for (const path of stdout.trim().split("\n")) roots.push(await realpath(path));
   }
@@ -167,7 +169,7 @@ async function resolveBaseRevision(
   for (const ref of refs) {
     signal.throwIfAborted();
     try {
-      const { stdout } = await execFileAsync(
+      const stdout = await runSubprocess(
         "git",
         [
           "--git-dir",
@@ -178,7 +180,7 @@ async function resolveBaseRevision(
           "--end-of-options",
           `${ref}^{commit}`,
         ],
-        { cwd: jjRoot, signal, timeout: 25_000, maxBuffer: 1024 * 1024 },
+        { cwd: jjRoot, signal, timeoutMs: 25_000, maxOutputBytes: 1024 * 1024 },
       );
       return stdout.trim();
     } catch (error) {

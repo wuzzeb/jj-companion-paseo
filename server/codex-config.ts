@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { z } from "zod";
+import { stopProcessTree } from "./subprocess.js";
 
 const configResponse = z.object({
   config: z.object({
@@ -11,26 +12,36 @@ const configResponse = z.object({
 });
 
 interface ReadRootsOptions {
-  cwd: string;
-  signal: AbortSignal;
-  env?: NodeJS.ProcessEnv;
+  readonly cwd: string;
+  readonly signal: AbortSignal;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 // Let Codex resolve user/project config, trust, relative paths, and home expansion.
 // No thread or model request is created by this short-lived app-server.
 export async function readCodexWritableRoots({ cwd, signal, env }: ReadRootsOptions) {
   signal.throwIfAborted();
+  const commandSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
   const child = spawn("codex", ["app-server"], {
     cwd,
     env,
-    signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
-    killSignal: "SIGKILL",
+    // npm's Windows launcher is codex.cmd. The command and argument are constants.
+    shell: process.platform === "win32",
+    detached: process.platform !== "win32",
+    windowsHide: true,
     stdio: ["pipe", "pipe", "ignore"],
   });
   const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
   const lines = createInterface({ input: child.stdout });
+  let onAbort: (() => void) | undefined;
   try {
     return await new Promise<string[]>((resolve, reject) => {
+      onAbort = () => reject(commandSignal.reason);
+      commandSignal.addEventListener("abort", onAbort, { once: true });
+      if (commandSignal.aborted) {
+        onAbort();
+        return;
+      }
       let received = 0;
       const send = (message: unknown) => child.stdin.write(`${JSON.stringify(message)}\n`);
       child.once("error", reject);
@@ -66,8 +77,9 @@ export async function readCodexWritableRoots({ cwd, signal, env }: ReadRootsOpti
       });
     });
   } finally {
+    if (onAbort) commandSignal.removeEventListener("abort", onAbort);
     lines.close();
-    child.kill("SIGKILL");
+    await stopProcessTree(child);
     await closed;
   }
 }

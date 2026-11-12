@@ -57,7 +57,16 @@ test(
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
       }
     } else {
-      assert.throws(() => process.kill(pid, 0));
+      // macOS can briefly retain an orphan until init reaps its process record.
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try {
+          process.kill(pid, 0);
+        } catch {
+          return;
+        }
+        await delay(20);
+      }
+      assert.fail("the descendant must terminate after cancellation");
     }
   },
 );

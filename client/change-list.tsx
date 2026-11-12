@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Pressable, Text, View, Platform, StyleSheet } from "react-native";
-import { useRpc, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import { useRpc, useWorkspace, type PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { FlatList, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { historyLimit, historyRpc, maxHistoryLimit, type Change } from "../shared/history.js";
 import { linearRange } from "../shared/linear-range.js";
@@ -45,6 +45,7 @@ export function ChangeList({
   readonly headerControls: ReactNode;
 }) {
   const [width, setWidth] = useState(320);
+  const workspaceName = useWorkspace(workspaceId, (workspace) => workspace.name);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   useEffect(() => setSelectionError(null), [target]);
   const bookmarks = useBookmarks(workspaceId, hostId, directory, repository, enabled);
@@ -116,7 +117,12 @@ export function ChangeList({
         {headerControls}
       </View>
       {history ? (
-        <BookmarkControls actions={bookmarks} theme={theme} onDiff={() => onSelect(branchReview)} />
+        <BookmarkControls
+          actions={bookmarks}
+          theme={theme}
+          onDiff={() => onSelect(branchReview)}
+          suggestedName={workspaceName ?? ""}
+        />
       ) : null}
       {query.error ? (
         <View style={styles.message} accessibilityRole="alert">

@@ -129,8 +129,10 @@ Use **Bookmarks** to create a local bookmark, then **Push** after reviewing it. 
 immutable and trunk bookmarks, so it does not pull `main` forward into a feature branch. The branch
 row shows the branch bookmark with Diff, Tug, and Push on the right. If several names qualify,
 select the branch bookmark once for Tug and Push; neither action is enabled until a bookmark is
-selected. With no branch bookmark, the row offers Diff; create a bookmark in **Bookmarks**. No `tug`
-alias is required.
+selected. With no branch bookmark, the row offers **Diff** and **Create Bookmark**. The latter opens
+a focused name-only dialog, prefilled with the workspace name. Enter or **Create** creates a local
+bookmark at the workspace tip; the dialog closes on success and keeps the name on failure. The
+larger **Bookmarks** dialog remains available for all other management. No `tug` alias is required.
 
 **Push** publishes the bookmark at its current position; use Tug first to include newer changes. A
 first push automatically tracks the new remote bookmark. If a same-named remote bookmark already

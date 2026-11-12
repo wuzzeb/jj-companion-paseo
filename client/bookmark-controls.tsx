@@ -6,20 +6,24 @@ import type { BookmarkAction } from "../shared/bookmarks.js";
 import type { useBookmarks } from "./use-bookmarks.js";
 import { ActionButton } from "./action-button.js";
 import { BookmarksDialog } from "./bookmarks-dialog.js";
+import { CreateBranchBookmarkDialog } from "./create-branch-bookmark-dialog.js";
 
 export function BookmarkControls({
   actions,
   theme,
   onDiff,
+  suggestedName,
 }: {
   readonly actions: ReturnType<typeof useBookmarks>;
   readonly theme: PluginTheme;
   readonly onDiff: () => void;
+  readonly suggestedName: string;
 }) {
   const state = actions.state.data;
   const [remoteChoice, setRemoteChoice] = useState<string | null>(null);
   const [remotesOpen, setRemotesOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [branchChoice, setBranchChoice] = useState<string | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const branch = state?.candidates.includes(branchChoice ?? "")
@@ -168,7 +172,9 @@ export function BookmarkControls({
                 {button("Tug", tug, !branch, actions.activeAction === "tug")}
                 {button("Push", push, !branch, actions.activeAction === "push")}
               </>
-            ) : null}
+            ) : (
+              button("Create Bookmark", () => setCreateOpen(true))
+            )}
           </View>
         </View>
         {!actions.busy && (actions.error || actions.operation?.status === "failed") ? (
@@ -244,6 +250,18 @@ export function BookmarkControls({
         remote={remote}
         onRemoteChange={setRemoteChoice}
       />
+      {createOpen ? (
+        <CreateBranchBookmarkDialog
+          actions={actions}
+          theme={theme}
+          suggestedName={suggestedName}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(name) => {
+            setBranchChoice(name);
+            setCreateOpen(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }

@@ -2,6 +2,7 @@
 /jayjay/
 /jjui/
 /node_modules/
+/install-lock.yaml
 /.codex/config.toml
 *.tsbuildinfo
 

@@ -305,6 +305,12 @@ research, not plugin dependencies. Local Codex sandbox preferences belong in you
 Deferred upstream requests for file-tab navigation, typography settings, and native diff rendering
 are tracked in [Paseo API improvements](docs/paseo-api-wishlist.md).
 
+## Releasing
+
+See [the release guide](docs/releases.md) for npm setup, the initial publication, and
+release-process options. The npm publishing workflow is manually triggered with an existing version
+tag.
+
 ## License
 
 Apache-2.0; see [LICENSE](LICENSE). The vendored JayJay renderer retains its own

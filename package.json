@@ -1,20 +1,38 @@
 {
   "name": "paseo-jj-companion",
   "version": "0.1.0",
-  "private": true,
   "description": "Jujutsu workspaces, change history, bookmark management, and diff review for Paseo.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/wuzzeb/jj-companion-paseo.git"
   },
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.server.ts",
+    "index.client.tsx",
+    "server/",
+    "client/",
+    "shared/",
+    "!**/*.test.ts",
+    "install-lock.yaml",
+    "pnpm-workspace.yaml",
+    "tsconfig.json",
+    "tsconfig.client.json"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
+    "prepack": "node --input-type=module -e \"import { copyFileSync } from 'node:fs'; copyFileSync('pnpm-lock.yaml', 'install-lock.yaml');\"",
     "test": "tsx --test server/*.test.ts client/*.test.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
     "lint": "oxlint index.server.ts index.client.tsx server client shared",
-    "format": "oxfmt index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md .gitignore",
-    "format:check": "oxfmt --check index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md .gitignore"
+    "format": "oxfmt index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore",
+    "format:check": "oxfmt --check index.server.ts index.client.tsx server client shared package.json tsconfig.json tsconfig.client.json paseo-plugin.json pnpm-workspace.yaml README.md OVERVIEW.md docs/releases.md .github/workflows .gitignore"
   },
   "devDependencies": {
     "@getpaseo/client": "0.15.0",

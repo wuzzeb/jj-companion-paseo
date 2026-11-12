@@ -5,5 +5,13 @@
   "requirements": {
     "paseo": ">=0.15.0"
   },
-  "build": [["pnpm", "install", "--frozen-lockfile", "--prod=false"]]
+  "build": [
+    [
+      "node",
+      "--input-type=module",
+      "-e",
+      "import { copyFileSync, existsSync } from 'node:fs'; if (!existsSync('pnpm-lock.yaml')) copyFileSync('install-lock.yaml', 'pnpm-lock.yaml');"
+    ],
+    ["pnpm", "install", "--frozen-lockfile", "--prod=false"]
+  ]
 }

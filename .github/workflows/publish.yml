@@ -1,0 +1,112 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish (e.g. v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Validate release version
+        id: version
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync, readFileSync } from 'node:fs';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          assert.equal(pkg.name, 'paseo-jj-companion');
+          assert.notEqual(pkg.private, true, 'The package must be publishable');
+          assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+          assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, 'Tag must match package.json');
+          const prerelease = pkg.version.includes('-');
+          appendFileSync(process.env.GITHUB_OUTPUT, `dist-tag=${prerelease ? 'next' : 'latest'}\n`);
+          NODE
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install jj for the test suite
+        run: |
+          mkdir -p "$RUNNER_TEMP/jj"
+          curl --fail --location --retry 3 \
+            https://github.com/jj-vcs/jj/releases/download/v0.46.0/jj-v0.46.0-x86_64-unknown-linux-musl.tar.gz \
+            --output "$RUNNER_TEMP/jj.tar.gz"
+          tar -xzf "$RUNNER_TEMP/jj.tar.gz" -C "$RUNNER_TEMP/jj"
+          "$RUNNER_TEMP/jj/jj" --version
+          echo "$RUNNER_TEMP/jj" >> "$GITHUB_PATH"
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Check types
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # Paseo compiles the shipped TypeScript after running the manifest's build command.
+      - name: Pack and check the release artifact
+        id: pack
+        run: |
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const result = JSON.parse(readFileSync(join(process.env.RUNNER_TEMP, 'pack.json'), 'utf8'));
+          const [pkg] = Array.isArray(result) ? result : Object.values(result);
+          const files = new Set(pkg.files.map(file => file.path));
+          for (const file of [
+            'package.json', 'paseo-plugin.json', 'OVERVIEW.md', 'README.md', 'LICENSE',
+            'index.server.ts', 'index.client.tsx', 'install-lock.yaml', 'pnpm-workspace.yaml',
+            'client/vendor/jayjay/LICENSE', 'client/vendor/jayjay/NOTICE.md',
+          ]) assert(files.has(file), `Missing package file: ${file}`);
+          assert(![...files].some(file => /(?:^|\/)(?:node_modules|\.github|\.codex)\//.test(file)
+            || file.endsWith('.test.ts')), 'Package contains development-only files');
+          appendFileSync(process.env.GITHUB_OUTPUT,
+            `tarball=${join(process.env.RUNNER_TEMP, pkg.filename)}\n`);
+          NODE
+
+      - name: Publish with npm trusted publishing
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          DIST_TAG: ${{ steps.version.outputs.dist-tag }}
+        run: npm publish "$TARBALL" --access public --tag "$DIST_TAG"

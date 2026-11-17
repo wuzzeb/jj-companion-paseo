@@ -1,7 +1,8 @@
 # Releases
 
-The package is `paseo-jj-companion`; its initial version is `0.1.0`. This guide describes publishing
-it, but no package, tag, or GitHub Release has been published as part of adding the workflow.
+The package is `paseo-jj-companion`. Version `0.1.0` was published manually to npm, its GitHub
+Release is available, and installation from npm has been verified in Paseo. Subsequent releases use
+the trusted-publishing workflow below.
 
 ## Recommended process
 
@@ -9,18 +10,17 @@ Keep version selection in a reviewed change, create the version tag and release 
 then manually run [Publish to npm](../.github/workflows/publish.yml) for that tag. For this
 single-package project, that keeps releases explicit without a bot committing back to `main`.
 
-1. Update `package.json` to the intended version, describe the changes, and merge the change. The
-   first release can keep `0.1.0`. For later releases, edit the version directly or use
-   `npm version patch --no-git-tag-version --package-lock=false` (substitute `minor`, `major`, or an
-   explicit version as needed).
+1. Update `package.json` to the intended version, describe the changes, and merge the change. Edit
+   the version directly or use `npm version patch --no-git-tag-version --package-lock=false`
+   (substitute `minor`, `major`, or an explicit version as needed).
 2. In GitHub's **Releases → Draft a new release**, create a tag matching the version, such as
-   `v0.1.0`, targeting the reviewed commit. Generate release notes and edit them for users. Keeping
+   `v0.1.1`, targeting the reviewed commit. Generate release notes and edit them for users. Keeping
    a draft does not publish to npm.
 3. Publish the GitHub Release to create the tag, then dispatch the workflow **on that tag**, with
    the same tag as its input:
 
    ```bash
-   gh workflow run publish.yml --ref v0.1.0 -f tag=v0.1.0
+   gh workflow run publish.yml --ref v0.1.1 -f tag=v0.1.1
    ```
 
    The workflow rejects dispatches from branches, checks out the triggering commit, verifies the
@@ -90,10 +90,9 @@ CI does not exercise the running UI, npm authentication, or GitHub's environment
 of a stored npm token. It requires npm 11.5.1 or later and Node.js 22.14.0 or later; the workflow
 uses Node.js 24. The npm package's `repository.url` must match this GitHub repository.
 
-npm requires the package to exist before configuring a trusted publisher. For a brand-new package,
-bootstrap the initial `0.1.0` publication from the reviewed checkout using your npm account with 2FA
-enabled. Check name availability and ownership on npm before publishing; the local package name does
-not reserve it.
+npm requires the package to exist before configuring a trusted publisher. The manual bootstrap of
+`0.1.0` is complete. These commands are retained for reference; subsequent releases use the workflow
+above rather than repeating the bootstrap:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -106,8 +105,7 @@ npm login
 npm publish --access public --tag latest
 ```
 
-These are instructions for the maintainer to run when ready, not commands run by the workflow setup.
-The first manual publication does not have GitHub Actions provenance. Alternatively,
+The first manual publication does not have GitHub Actions provenance. For a new package,
 [staged publishing](https://docs.npmjs.com/staged-publishing/) supports creating a new package with
 `npm stage publish --access public --tag latest` (npm 11.15.0 or later), then reviewing and
 approving it on npm with 2FA. Staging a new package creates a public `0.0.0-stage` placeholder
@@ -123,11 +121,14 @@ After the initial version is published:
    - Workflow filename: `publish.yml`
    - Environment: `release`
    - Allow direct publishing with `npm publish` (stage-only permission will reject this workflow).
+   - Leave `npm dist-tag` permission unchecked; `npm publish --tag` sets the distribution tag
+     without separate tag-management commands.
 3. Configure it when the next release is ready: newly configured publishers must complete their
    first successful publication within two days or be recreated. No `NPM_TOKEN` secret is needed.
-4. Create the initial GitHub Release with tag `v0.1.0` and release notes. Since `0.1.0` was already
-   published during bootstrap, do not run the publishing workflow for it. Subsequent versions follow
-   the normal process above and get automatic provenance from OIDC.
+
+The initial GitHub Release is tagged `v0.1.0`. Do not run the publishing workflow for that version,
+which is already on npm. Subsequent versions follow the normal process above and get automatic
+provenance from OIDC.
 
 ## Paseo registry
 
@@ -136,10 +137,10 @@ and Git commits. npm is a good fit here because its registry bot opens update PR
 versions; Git updates require a new submission or a manual registry change. Registry users receive
 the reviewed, pinned version, so an npm release is not immediately a registry update.
 
-After publishing, submit `paseo-jj-companion@0.1.0` through the registry's submission form, choosing
-appropriate categories. `OVERVIEW.md` is included beside `paseo-plugin.json` because the registry
-uses it for the plugin page rather than automatically using the README. Direct GitHub installation
-remains available.
+After publishing, submit the latest published version, such as `paseo-jj-companion@0.1.1`, through
+the registry's submission form, choosing appropriate categories. `OVERVIEW.md` is included beside
+`paseo-plugin.json` because the registry uses it for the plugin page rather than automatically using
+the README. Direct GitHub installation remains available.
 
 ## Other release-process options
 

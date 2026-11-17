@@ -21,7 +21,7 @@ The review interface works on desktop and web; native mobile diff review is not 
 ## Requirements
 
 - Paseo **0.16.0+**, with `pluginsEnabled: true` in its config.
-- **jj 0.46.0+**, **Git 2.42+**, **Node.js 22.12+**, and **pnpm** on the daemon's PATH.
+- **jj 0.46.0+**, **Git 2.42+**, **Node.js 22.12+**, **npm**, and **pnpm** on the daemon's PATH.
 - A jj repository, colocated or non-colocated.
 
 All commands run on the machine hosting the Paseo daemon. No separate JayJay installation is needed.

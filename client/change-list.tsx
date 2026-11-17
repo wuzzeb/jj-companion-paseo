@@ -258,7 +258,7 @@ export function ChangeList({
                       : "Load older changes"}
                   </Text>
                 </Pressable>
-              ) : null
+              ) : undefined
             }
           />
         </ScrollView>

@@ -49,9 +49,11 @@ lockfile directly. There is only one maintained dependency lockfile.
 
 [Checks](../.github/workflows/checks.yml) runs for pull requests and `main`, and is also required by
 the publishing workflow. It runs formatting, type checking, lint, and the integration tests on
-Ubuntu 24.04, macOS 15, and Windows Server 2025 with Node.js 22.12.0 and 24 and jj 0.47.1. A
-separate Linux job checks the minimum jj 0.46.0. jj is installed by `taiki-e/install-action` through
-its `cargo-binstall` fallback for `jj-cli`, which handles the platform's release archive.
+Ubuntu 24.04 and Windows Server 2025 with Node.js 24 and jj 0.47.1. A separate Linux job checks the
+minimum jj 0.46.0, also on Node.js 24. Node.js 22.12.0 remains the declared minimum, but CI does not
+test Node.js 22 or macOS. jj is installed by `taiki-e/install-action` through its `cargo-binstall`
+fallback for `jj-cli`, which handles the platform's release archive. The root `.gitattributes` keeps
+text files on LF line endings so Windows checkouts pass the same formatting checks.
 
 Every job packs the npm artifact, checks its contents, extracts it into a fresh temporary directory,
 and runs the manifest's build commands with `NODE_ENV=production`. It then typechecks both

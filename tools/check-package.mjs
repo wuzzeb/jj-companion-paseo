@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -49,7 +49,10 @@ function run(command, args, cwd, env = process.env) {
 
 const temporary = await mkdtemp(join(tmpdir(), "jj-companion-package-"));
 try {
-  run("tar", ["-xzf", tarball, "-C", temporary]);
+  // GNU tar treats a Windows drive letter in the archive path as a remote host.
+  // Extract from the temporary directory using only a relative archive path.
+  await copyFile(tarball, join(temporary, "artifact.tgz"));
+  run("tar", ["-xzf", "./artifact.tgz"], temporary);
   const directory = join(temporary, "package");
   const manifest = JSON.parse(await readFile(join(directory, "paseo-plugin.json"), "utf8"));
   for (const file of [manifest.icon, ...(manifest.media ?? [])].filter(Boolean)) {

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRpc } from "@getpaseo/plugin/client";
+import { useRpc, useSubscription } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/ui";
 import {
   bookmarkActionRpc,
-  bookmarkOperationRpc,
+  bookmarkOperationSubscription,
   bookmarkStateRpc,
+  isOperationComplete,
   type BookmarkAction,
+  type BookmarkOperation,
 } from "../shared/bookmarks.js";
 
 export function useBookmarks(
@@ -18,10 +20,9 @@ export function useBookmarks(
 ) {
   const stateRpc = useRpc(bookmarkStateRpc);
   const startRpc = useRpc(bookmarkActionRpc);
-  const operationRpc = useRpc(bookmarkOperationRpc);
   const client = useQueryClient();
   const toast = useToast();
-  const [operationId, setOperationId] = useState<string | null>(null);
+  const [operation, setOperation] = useState<BookmarkOperation | null>(null);
   const handled = useRef<string | null>(null);
   const state = useQuery({
     queryKey: ["jj-bookmarks", hostId, workspaceId, directory, repository],
@@ -30,48 +31,37 @@ export function useBookmarks(
     enabled,
     retry: false,
   });
-  const operation = useQuery({
-    queryKey: ["jj-bookmark-operation", hostId, workspaceId, operationId],
-    queryFn: () => operationRpc({ workspaceId, operationId: operationId! }),
-    enabled: operationId !== null,
-    refetchInterval: (query) =>
-      ["succeeded", "failed"].includes(query.state.data?.status ?? "") ? false : 600,
-    retry: false,
-  });
+  const subscription = useSubscription(
+    bookmarkOperationSubscription,
+    { workspaceId, operationId: operation?.id ?? null },
+    (event) => setOperation((current) => (current?.id === event.id ? event : current)),
+  );
   const start = useMutation({
     mutationFn: (action: BookmarkAction) => startRpc({ workspaceId, repository, action }),
-    onSuccess: (result) => setOperationId(result.id),
+    onSuccess: setOperation,
     onError: (error) => toast.error(error.message),
     retry: false,
   });
   useEffect(() => {
-    const result = operation.data;
-    if (
-      !result ||
-      !["succeeded", "failed"].includes(result.status) ||
-      handled.current === result.id
-    )
-      return;
+    const result = operation;
+    if (!result || !isOperationComplete(result) || handled.current === result.id) return;
     handled.current = result.id;
     if (result.status === "failed") toast.error(result.message);
     else toast.show(result.message, { variant: "success" });
     void client.invalidateQueries({ queryKey: ["jj-history", hostId, workspaceId] });
     void client.invalidateQueries({ queryKey: ["jj-bookmarks", hostId, workspaceId] });
-  }, [operation.data, client, toast, hostId, workspaceId]);
+  }, [operation, client, toast, hostId, workspaceId]);
+  const subscriptionError =
+    subscription.status === "error" ? subscription.error.message : undefined;
   const busy =
-    start.isPending ||
-    Boolean(
-      operationId &&
-      !operation.isError &&
-      !["succeeded", "failed"].includes(operation.data?.status ?? ""),
-    );
+    start.isPending || Boolean(operation && !subscriptionError && !isOperationComplete(operation));
   return {
     state,
     run: start.mutateAsync,
     busy,
     activeAction: busy ? start.variables?.kind : undefined,
     pendingAction: busy ? start.variables : undefined,
-    operation: operation.data,
-    error: operation.error?.message ?? start.error?.message,
+    operation: operation ?? undefined,
+    error: subscriptionError ?? start.error?.message,
   };
 }

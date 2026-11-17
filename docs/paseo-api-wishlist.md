@@ -1,8 +1,53 @@
 # Deferred Paseo plugin API improvements
 
-Recorded November 11, 2026. These are ideas for future upstream work, not changes being made to
-Paseo or jj Companion now. Keep the JayJay renderer until a supported alternative is useful enough
-to replace it.
+Originally recorded November 11, 2026; rechecked against the local Paseo 0.16.1 checkout on
+November 17. The three renderer/navigation requests below remain unavailable in the public SDK. Keep
+the JayJay renderer until a supported alternative is useful enough to replace it.
+
+## Paseo 0.16 assessment
+
+The plugin now pins all four direct `@getpaseo/*` development packages to 0.16.1 and requires Paseo
+0.16.0 or later on both host and app for subscriptions. It does not use the removed
+`agent.turn.after.timeline` field. The SDK also requires workspace metadata in hook snapshots; our
+fixtures include it, and tests verify that creation hooks preserve caller-supplied metadata.
+
+### Adopted: live bookmark-operation status
+
+`defineSubscription`, `server.handle`, and `useSubscription` replace the 600 ms operation-status
+poll. Each subscriber receives the current snapshot, subsequent queued/running/terminal updates, and
+then a closed stream. Late subscribers and reconnects receive the latest state, including a finished
+result. Subscriptions are scoped to the originating workspace. Detaching a listener or losing its
+connection does not cancel the daemon job. A plugin restart still discards jobs and their in-memory
+status.
+
+Bookmark lists and history retain their existing periodic refresh, and review comparisons remain
+pinned until explicitly refreshed. No filesystem watcher or automatic diff replacement is added.
+
+### Useful follow-ups
+
+| Capability                                  | Possible jj feature                                                | Scope and constraints                                                                                                                                                                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plugin subscriptions                        | Live history/bookmarks and a “new edits available” indicator       | Share a debounced repository watcher across panels; retain pinned review snapshots. Handle jj's shared repository and sibling workspaces, external CLI writes, disconnects, and teardown.                                                                        |
+| Workspace row badges                        | Show jj conflicts or the current change ID in the existing sidebar | `addWorkspaceRowBadgeItem` is enough; avoid replacing the whole sidebar. Share observations instead of starting a polling process per row.                                                                                                                       |
+| New workspace items plus metadata           | Choose a jj change as the base of an isolated workspace            | `useNewWorkspace().setMetadata` can pass a namespaced selection to `workspace.create.before`; validate and resolve it there. `setBaseRef` still describes Git branches, and projects that cannot create Git worktrees remain limited to Local in Paseo's picker. |
+| Composer controls and draft/attachment APIs | Add selected jj review context to an agent's draft                 | Make attachment creation explicit; include the pinned revision and selected repository so the agent gets the reviewed change. Decide the UX and payload before implementation.                                                                                   |
+| Durable workspace/agent metadata            | Remember jj associations across daemon restarts                    | Namespace keys with `jj-companion`; metadata can describe a workspace but must not replace the on-disk ownership marker and cleanup checks.                                                                                                                      |
+
+The smallest next UI feature is a workspace badge. A jj base picker is more involved but would
+address the current Git-only base selection. Custom sidebar views, binary payloads, and background
+agent task counts have no immediate benefit for the current review interface.
+
+### Remaining API gaps and lifecycle behavior
+
+`PluginTheme` still exposes only colors, plugin navigation has no normal-file opening action, and
+`client/ui` has no parsed-diff renderer. The earlier wishlist remains relevant. The
+`worktree.create.before` hook still only edits Git worktree creation; it cannot replace our
+`workspace.create.before` integration. Archive Undo does not restore files deleted by our cleanup;
+there is no new plugin archive-veto/undo hook to adopt in 0.16.
+
+This assessment uses the local release source: `CHANGELOG.md`,
+`packages/plugin/src/{rpc.ts,contracts.ts,client/contracts.ts,client/new-workspace.tsx,server/lifecycle.ts}`,
+and `public-docs/plugins/{reference.md,hooks.md}` inside the ignored `paseo/` checkout.
 
 ## Summary
 
@@ -22,8 +67,8 @@ our jj comparison semantics.
 Desired behavior: an icon beside the diff's context controls opens the current file in Paseo's
 ordinary file viewer/editor, preserving the jj Companion tab.
 
-The installed SDK's `navigation` exposes workspace, agent, and Electron browser navigation. It has
-no file-opening action. The upstream SDK checked on November 11 also lacks one. Internally, Paseo
+The 0.16.1 SDK's navigation exposes workspace, agent, terminal, project, and Electron browser
+navigation across its client capabilities. It has no normal-file opening action. Internally, Paseo
 already has normal file-tab targets and workspace navigation; the missing part is the public plugin
 capability.
 
@@ -179,5 +224,4 @@ implementation.
 - [Commit diff data fetching](https://github.com/getpaseo/paseo/blob/3ed57e9dd72df4927b08f16859eaf8d4d2d70ac2/packages/app/src/git/use-diff-files.ts)
 - [Existing renderer comparison](research/diff-viewer-options.md)
 
-Track implementation status here when any item becomes available upstream. No Paseo fork, SDK
-extension, renderer migration, or file-opening button is included in this documentation change.
+Track implementation status here when any item becomes available upstream.

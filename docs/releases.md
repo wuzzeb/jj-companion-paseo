@@ -66,7 +66,7 @@ when running the same artifact check:
 ```bash
 npm pack --json --pack-destination /tmp > /tmp/pack.json
 PASEO_COMPILER_MODULE=/path/to/paseo/server/plugins/compiler-build.js \
-  PASEO_VERSION=0.15.0 node tools/check-package.mjs /tmp/pack.json
+  PASEO_VERSION=0.16.1 node tools/check-package.mjs /tmp/pack.json
 ```
 
 Before publishing, run the host compilation check above, confirm the portability jobs have passed,

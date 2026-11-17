@@ -6,7 +6,11 @@ import { listRepositories } from "./server/repository.js";
 import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./server/workspaces.js";
 import { listHistory } from "./server/history.js";
 import { historyRpc } from "./shared/history.js";
-import { bookmarkActionRpc, bookmarkOperationRpc, bookmarkStateRpc } from "./shared/bookmarks.js";
+import {
+  bookmarkActionRpc,
+  bookmarkOperationSubscription,
+  bookmarkStateRpc,
+} from "./shared/bookmarks.js";
 import { createBookmarkOperations } from "./server/bookmark-operations.js";
 
 export default function contribute(server: PluginServerContext) {
@@ -21,7 +25,7 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(bookmarkStateRpc, bookmarks.state);
   server.handle(bookmarkActionRpc, bookmarks.start);
-  server.handle(bookmarkOperationRpc, bookmarks.operation);
+  server.handle(bookmarkOperationSubscription, bookmarks.watch);
   server.handle(historyRpc, listHistory);
   server.addHook("agent.create.before", ({ request }, context) =>
     configureCodexAgent({ request, signal: context.signal }),

@@ -106,6 +106,7 @@ test("Codex roots preserve config and agent roots and include the exact linked G
       },
     },
     env: { CODEX_HOME: "/custom-codex-home" },
+    metadata: { "other-plugin.task": { id: "task-1" } },
   };
   const original = structuredClone(request);
   const result = await configureCodexAgent({
@@ -274,6 +275,7 @@ test("New worktree creates a registered jj workspace from the source parents and
     workspaceId: "wks_0123456789abcdef",
     idempotencyKey: "create-task",
     background: true,
+    metadata: { "other-plugin.issue": { id: "issue-1", labels: ["bug"] } },
     callerAgentId: "caller-agent",
     firstAgentContext: { prompt: "Do a task" },
   };
@@ -420,6 +422,7 @@ function archiveOptions(cwd: string, workspacesRoot: string) {
       cwd,
       name: null,
       archivedAt: "2026-10-15T00:00:00.000Z",
+      metadata: {},
     },
     listWorkspaces: async (_options: PaseoWorkspaceListOptions) => ({
       entries: [],

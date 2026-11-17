@@ -120,9 +120,11 @@ deletion, untracking, and moving to arbitrary revisions are left to the jj CLI.
 
 Bookmark operations are serialized across this plugin’s workspaces sharing the same jj repository.
 Stale bookmark positions and workspace changes produce an error and refresh the view. Push and Fetch
-run as daemon-side jobs with polled status, allowing up to three minutes for network commands.
-Closing the panel does not cancel a job; reloading or disabling the plugin cancels pending work.
-Normal jj push checks remain enabled, including description, conflict, and remote-update checks.
+run as daemon-side jobs with live status streamed through Paseo subscriptions, allowing up to three
+minutes for network commands. Reconnecting resumes status updates for the same job; a plugin restart
+discards job status, so refresh history if an operation becomes unavailable. Closing the panel does
+not cancel a job; reloading or disabling the plugin cancels pending work. Normal jj push checks
+remain enabled, including description, conflict, and remote-update checks.
 
 ## Workspace creation
 
@@ -164,7 +166,7 @@ arbitrary jj changes or revset expressions; non-colocated projects may not offer
 ## Setup, teardown, and cleanup
 
 The plugin uses `server.addHook("workspace.create.before")` to run `jj workspace add`, then gives
-Paseo the resulting directory. Paseo 0.15's `worktree.create.before` hook changes Git creation
+Paseo the resulting directory. Paseo 0.16's `worktree.create.before` hook changes Git creation
 options but still requires Paseo to run `git worktree add`; it cannot replace creation with
 `jj workspace add`. The plugin therefore keeps jj creation in `workspace.create.before`, including
 its own awaited setup. Paseo's `worktree.create.after` hook and built-in `.worktreeinclude` copying
@@ -218,8 +220,8 @@ Archive events are best effort. A missed event or failed removal leaves the dire
 failures appear in `paseo plugin logs jj-companion`. There is no automatic retry after a missed
 event. If ownership-marker creation fails, the plugin attempts to remove its new jj workspace
 immediately. A later Paseo failure can still leave an orphan: the before-hook has no callback for
-that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep.
-Paseo's restore action does not recreate a directory removed by this plugin.
+that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep. Paseo
+0.16's archive Undo and restore actions do not recreate a directory removed by this plugin.
 
 Paseo limits hook invocations to 30 seconds in total. The plugin passes the cancellation signal to
 jj and lifecycle commands, and caps each command at 25 seconds. Keep setup and teardown within that

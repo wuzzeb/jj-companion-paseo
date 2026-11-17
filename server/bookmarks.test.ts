@@ -9,8 +9,7 @@ import { readBookmarkState, runBookmarkAction } from "./bookmarks.js";
 import { runJj } from "./jj.js";
 import { createBookmarkOperations } from "./bookmark-operations.js";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
-import { setTimeout as delay } from "node:timers/promises";
-import type { BookmarkAction, BookmarkState } from "../shared/bookmarks.js";
+import type { BookmarkAction, BookmarkOperation, BookmarkState } from "../shared/bookmarks.js";
 
 const execFileAsync = promisify(execFile);
 const configDirectory = await mkdtemp(join(tmpdir(), "paseo-jj-bookmark-config-"));
@@ -37,6 +36,24 @@ const workspace = (state: BookmarkState) => ({
 });
 const local = (state: BookmarkState, name: string) =>
   state.bookmarks.find((bookmark) => bookmark.remote === null && bookmark.name === name)!;
+
+function watchOperation(
+  service: ReturnType<typeof createBookmarkOperations>,
+  workspaceId: string,
+  operationId: string,
+) {
+  const events: BookmarkOperation[] = [];
+  const done = service.watch(
+    { workspaceId, operationId },
+    {
+      signal: AbortSignal.timeout(10_000),
+      push: async (event) => {
+        events.push(event);
+      },
+    },
+  );
+  return { events, done };
+}
 
 async function repository(t: TestContext, colocated = true) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "paseo-jj-bookmarks-")));
@@ -455,12 +472,23 @@ test("queued operations serialize across sibling workspaces and scope their stat
   const sibling = join(directory, "sibling");
   await jj(repo, "workspace", "add", "--name", "sibling", "-r", "main", sibling);
   const service = createBookmarkOperations();
-  t.after(() => service.dispose());
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  t.after(async () => {
+    releaseFirst();
+    await service.dispose();
+  });
+  let firstReads = 0;
   const context = {
     paseo: {
       workspaces: {
         ref: (id: string) => ({
-          refresh: async () => ({ workspaceDirectory: id === "first" ? repo : sibling }),
+          refresh: async () => {
+            if (id === "first" && ++firstReads === 2) await firstGate;
+            return { workspaceDirectory: id === "first" ? repo : sibling };
+          },
         }),
       },
     },
@@ -486,21 +514,129 @@ test("queued operations serialize across sibling workspaces and scope their stat
     },
     context,
   );
-  assert.throws(
-    () => service.operation({ workspaceId: "first", operationId: second.id }),
-    /unavailable/,
+  assert.throws(() => watchOperation(service, "first", second.id), /unavailable/);
+  const watched = watchOperation(service, "second", second.id);
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+  const slowEvents: BookmarkOperation[] = [];
+  const slow = service.watch(
+    { workspaceId: "second", operationId: second.id },
+    {
+      signal: AbortSignal.timeout(10_000),
+      push: async (event) => {
+        slowEvents.push(event);
+        if (slowEvents.length === 1) await slowGate;
+      },
+    },
   );
-  let result = service.operation({ workspaceId: "second", operationId: second.id });
-  for (let count = 0; ["queued", "running"].includes(result.status) && count < 100; count++) {
-    await delay(20);
-    result = service.operation({ workspaceId: "second", operationId: second.id });
-  }
+  releaseFirst();
+  await watched.done;
+  assert.deepEqual(
+    slowEvents.map((event) => event.status),
+    ["queued"],
+  );
+  releaseSlow();
+  await slow;
+  assert.deepEqual(slowEvents, watched.events);
+  const result = watched.events.at(-1)!;
   assert.equal(result.status, "succeeded", result.message);
-  assert.equal(
-    service.operation({ workspaceId: "first", operationId: first.id }).status,
-    "succeeded",
+  assert.deepEqual(
+    watched.events.map((event) => event.status),
+    ["queued", "running", "succeeded"],
   );
+  // Late subscribers and reconnects receive the terminal state without replaying the job.
+  const reconnected = watchOperation(service, "first", first.id);
+  await reconnected.done;
+  assert.deepEqual(
+    reconnected.events.map((event) => event.status),
+    ["succeeded"],
+  );
+  assert.equal(first.status, "queued", "published snapshots must not mutate");
   assert.ok(local(await readBookmarkState(repo), "after-queue"));
+});
+
+test("operation subscriptions detach independently and transport errors do not fail the job", async (t) => {
+  const { repo } = await repository(t);
+  const service = createBookmarkOperations();
+  t.after(() => service.dispose());
+  const context = {
+    paseo: { workspaces: { ref: () => ({ refresh: async () => ({ workspaceDirectory: repo }) }) } },
+  } as unknown as PluginHandlerContext;
+  const initial = await readBookmarkState(repo);
+  const operation = await service.start(
+    {
+      workspaceId: "test",
+      action: {
+        kind: "create",
+        name: "survives-disconnect",
+        target: workspace(initial),
+        publish: false,
+      },
+    },
+    context,
+  );
+  const controller = new AbortController();
+  const disconnected: BookmarkOperation[] = [];
+  const detached = service.watch(
+    { workspaceId: "test", operationId: operation.id },
+    {
+      signal: controller.signal,
+      push: async (event) => {
+        disconnected.push(event);
+        controller.abort();
+      },
+    },
+  );
+  const broken = service.watch(
+    { workspaceId: "test", operationId: operation.id },
+    {
+      signal: AbortSignal.timeout(10_000),
+      push: async () => {
+        throw new Error("Connection lost");
+      },
+    },
+  );
+  const rejected = assert.rejects(broken, /Connection lost/);
+  const watched = watchOperation(service, "test", operation.id);
+  await Promise.all([detached, rejected, watched.done]);
+  assert.equal(disconnected.length, 1);
+  assert.equal(watched.events.at(-1)?.status, "succeeded");
+  assert.ok(local(await readBookmarkState(repo), "survives-disconnect"));
+});
+
+test("operation subscriptions replay failures and handle idle and aborted listeners", async (t) => {
+  const { repo } = await repository(t);
+  const service = createBookmarkOperations();
+  t.after(() => service.dispose());
+  const context = {
+    paseo: { workspaces: { ref: () => ({ refresh: async () => ({ workspaceDirectory: repo }) }) } },
+  } as unknown as PluginHandlerContext;
+  const operation = await service.start(
+    { workspaceId: "test", action: { kind: "fetch", remote: "missing" } },
+    context,
+  );
+  const watched = watchOperation(service, "test", operation.id);
+  await watched.done;
+  const failure = watched.events.at(-1)!;
+  assert.equal(failure.status, "failed");
+  assert.match(failure.message, /remote/i);
+  const replay = watchOperation(service, "test", operation.id);
+  await replay.done;
+  assert.deepEqual(replay.events, [failure]);
+  const push = async () => {
+    assert.fail("Idle and aborted subscriptions must not send events");
+  };
+  await service.watch(
+    { workspaceId: "test", operationId: null },
+    { signal: new AbortController().signal, push },
+  );
+  await service.watch(
+    { workspaceId: "test", operationId: operation.id },
+    { signal: AbortSignal.abort(), push },
+  );
+  assert.throws(() => watchOperation(service, "test", "unknown"), /unavailable/);
 });
 
 test("workspace actions reject a changed checkout and push rejects a moved source", async (t) => {
@@ -654,11 +790,9 @@ test("bookmark RPCs read and update only the selected child repository", async (
     },
     context,
   );
-  let result = service.operation({ workspaceId: "test", operationId: started.id });
-  for (let count = 0; ["queued", "running"].includes(result.status) && count < 100; count++) {
-    await delay(20);
-    result = service.operation({ workspaceId: "test", operationId: started.id });
-  }
+  const watched = watchOperation(service, "test", started.id);
+  await watched.done;
+  const result = watched.events.at(-1)!;
   assert.equal(result.status, "succeeded", result.message);
   assert.ok(local(await readBookmarkState(child), "child-only"));
   assert.equal(

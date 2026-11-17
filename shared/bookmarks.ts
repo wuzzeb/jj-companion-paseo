@@ -1,4 +1,4 @@
-import { defineRpc } from "@getpaseo/plugin";
+import { defineRpc, defineSubscription } from "@getpaseo/plugin";
 import { z } from "zod";
 import { repositoryInput } from "./repositories.js";
 
@@ -60,12 +60,18 @@ export const bookmarkActionSchema = z.discriminatedUnion("kind", [
 export type BookmarkAction = z.infer<typeof bookmarkActionSchema>;
 export type BookmarkTarget = z.infer<typeof target>;
 
-export const operationSchema = z.object({
-  id: z.string(),
-  status: z.enum(["queued", "running", "succeeded", "failed"]),
-  message: z.string(),
-});
+export const operationSchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(["queued", "running", "succeeded", "failed"]),
+    message: z.string(),
+  })
+  .readonly();
 export type BookmarkOperation = z.infer<typeof operationSchema>;
+
+export function isOperationComplete(operation: BookmarkOperation): boolean {
+  return operation.status === "succeeded" || operation.status === "failed";
+}
 export const bookmarkStateRpc = defineRpc({
   name: "bookmarks.state",
   input: z.object({ workspaceId: z.string().min(1), ...repositoryInput }),
@@ -80,8 +86,8 @@ export const bookmarkActionRpc = defineRpc({
   }),
   output: operationSchema,
 });
-export const bookmarkOperationRpc = defineRpc({
-  name: "bookmarks.operation",
-  input: z.object({ workspaceId: z.string().min(1), operationId: z.string() }),
-  output: operationSchema,
+export const bookmarkOperationSubscription = defineSubscription({
+  name: "bookmarks.watch-operation",
+  input: z.object({ workspaceId: z.string().min(1), operationId: z.string().nullable() }),
+  event: operationSchema,
 });

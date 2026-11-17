@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Dependabot uses the npm ecosystem for pnpm manifests and lockfiles.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    versioning-strategy: "increase"
+    commit-message:
+      prefix: "build"
+    groups:
+      # Paseo's SDK packages have exact peer dependencies on each other.
+      paseo:
+        patterns: ["@getpaseo/*"]
+      dependencies-minor-and-patch:
+        patterns: ["*"]
+        exclude-patterns: ["@getpaseo/*"]
+        update-types: ["minor", "patch"]

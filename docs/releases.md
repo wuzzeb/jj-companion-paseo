@@ -45,6 +45,23 @@ the tracked lockfile to the generated `install-lock.yaml`, which is included in 
 manifest restores it to `pnpm-lock.yaml` before the frozen install. GitHub checkouts use the tracked
 lockfile directly. There is only one maintained dependency lockfile.
 
+## Dependency updates
+
+[Dependabot](../.github/dependabot.yml) checks GitHub Actions and the root pnpm-managed dependencies
+weekly after the configuration is merged into `main`. Minor and patch updates are grouped by
+ecosystem; other major updates get individual PRs. The `@getpaseo/*` packages always form their own
+group so their exact peer versions can advance together. Review Paseo API changes and the minimum
+host version in `paseo-plugin.json` when updating that group.
+
+Dependabot uses its `npm` ecosystem for pnpm and updates `package.json` and `pnpm-lock.yaml`;
+`install-lock.yaml` is generated during packing. Dependency PRs run the existing Checks workflow.
+The runner OS labels, Node/jj tool versions, and the `packageManager` pnpm pin remain manual upkeep.
+
+GitHub currently documents a limitation with pnpm 12's two-document lockfile format, which this
+project uses: scheduled version updates work, but the dependency graph does not detect the lockfile
+dependencies for alerts and security update PRs. See
+[supported ecosystems](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#pnpm).
+
 ## Portability and artifact checks
 
 [Checks](../.github/workflows/checks.yml) runs for pull requests and `main`, and is also required by

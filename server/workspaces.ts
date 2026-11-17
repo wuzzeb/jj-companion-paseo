@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, rmdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -95,6 +95,26 @@ async function jj(cwd: string, signal: AbortSignal, ...args: string[]): Promise<
     },
   );
   return stdout.trim();
+}
+
+async function removeWorkspaceDirectory(
+  directory: string,
+  name: string,
+  signal: AbortSignal,
+): Promise<void> {
+  // Windows cannot delete a process's current directory. Select the workspace
+  // explicitly while running jj from its parent, including during rollback.
+  await jj(dirname(directory), signal, "--repository", directory, "workspace", "remove", name);
+  try {
+    await lstat(directory);
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return;
+    throw error;
+  }
+  // jj only warns if deleting the directory fails after unregistering it.
+  throw new Error(
+    `jj workspace ${name} was unregistered, but ${directory} could not be removed. Close processes using it and remove the directory manually.`,
+  );
 }
 
 export async function configureCodexAgent({
@@ -312,10 +332,10 @@ export async function createWorkspace({
     // This hook has not handed the directory to Paseo yet. A separate, bounded
     // signal permits rollback even when the creation invocation was canceled.
     try {
-      await jj(directory, AbortSignal.timeout(4_000), "workspace", "remove", name);
+      await removeWorkspaceDirectory(directory, name, AbortSignal.timeout(4_000));
     } catch (cleanupError) {
       console.error(
-        `paseo-jj-companion failed to roll back ${directory}; remove jj workspace ${name} manually.`,
+        `paseo-jj-companion failed to roll back ${directory}; inspect jj workspace ${name} and remove the directory manually.`,
         cleanupError,
       );
     }
@@ -421,7 +441,7 @@ async function archiveWorkspaceDirectory({
     sourceDirectory: ownership.sourceDirectory,
     signal,
   });
-  await jj(directory, signal, "workspace", "remove", ownership.name);
+  await removeWorkspaceDirectory(directory, ownership.name, signal);
   console.info(`paseo-jj-companion removed ${directory}`);
 }
 

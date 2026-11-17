@@ -54,7 +54,15 @@ test(
           "a remaining process record must be a terminated zombie",
         );
       } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        // Reaping can remove the process after /proc opens the file but before it reads it.
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            (error.code === "ENOENT" || error.code === "ESRCH")
+          )
+        )
+          throw error;
       }
     } else {
       // macOS can briefly retain an orphan until init reaps its process record.

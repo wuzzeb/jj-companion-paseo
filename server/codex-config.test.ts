@@ -98,7 +98,15 @@ test("cancelled config/read waits for the launcher and resistant descendants to 
     try {
       assert.match(await readFile(`/proc/${pid}/stat`, "utf8"), /\) Z /);
     } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      // Reaping can remove the process after /proc opens the file but before it reads it.
+      if (
+        !(
+          error instanceof Error &&
+          "code" in error &&
+          (error.code === "ENOENT" || error.code === "ESRCH")
+        )
+      )
+        throw error;
     }
   } else {
     for (let attempt = 0; attempt < 100; attempt++) {

@@ -29,7 +29,7 @@ All commands run on the machine hosting the Paseo daemon. No separate JayJay ins
 ## Install
 
 ```bash
-paseo plugin install https://github.com/wuzzeb/jj-companion-paseo
+paseo plugin install npm:paseo-jj-companion
 ```
 
 The plugin installs its locked dependencies automatically, using pnpm 12.13.0. To update:

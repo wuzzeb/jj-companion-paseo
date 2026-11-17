@@ -250,6 +250,16 @@ saved with the new agent; existing agents need to be recreated to receive them.
 
 ## Local installation
 
+Normal plugin operations require jj and Git on the daemon's PATH. Paseo supplies the plugin's Node
+runtime, so loading or reloading an installed plugin does not need a separate `node`, `npm`, or
+`pnpm` command on PATH. Codex integration additionally invokes `codex`, and configured
+setup/teardown scripts need the tools they call.
+
+Installing or updating a managed package requires npm for Paseo's package acquisition, plus Node.js
+22.12 or later and pnpm for this plugin's dependency-install commands. Checking for npm package
+updates also invokes npm. Git-source installs use Git for acquisition instead of npm and still run
+the Node/pnpm setup commands.
+
 For a local checkout, install dependencies first, then register its absolute path:
 
 ```bash
@@ -257,9 +267,9 @@ pnpm install --frozen-lockfile
 paseo plugin install /absolute/path/to/jj-companion-paseo
 ```
 
-The protocol config parser and syntax highlighter are bundled from these dependencies. No separate
-JayJay installation, Neovim, or Neovide is needed. All commands and paths refer to the machine
-running the Paseo daemon, including when connecting from another computer.
+The protocol config parser and syntax highlighter are bundled from these dependencies. All commands
+and paths refer to the machine running the Paseo daemon, including when connecting from another
+computer.
 
 Reload after editing a local installation, or update an installation managed by Paseo:
 

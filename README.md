@@ -21,10 +21,10 @@ The review interface works on desktop and web; native mobile diff review is not 
 ## Requirements
 
 - Paseo **0.16.0+**, with `pluginsEnabled: true` in its config.
-- **jj 0.46.0+**, **Git 2.42+**, **Node.js 22.12+**, **npm**, and **pnpm** on the daemon's PATH.
+- **jj 0.46.0+** and **Git 2.42+** on the daemon's PATH for normal use.
 - A jj repository, colocated or non-colocated.
 
-All commands run on the machine hosting the Paseo daemon. No separate JayJay installation is needed.
+All commands run on the machine hosting the Paseo daemon.
 
 ## Install
 
@@ -32,7 +32,10 @@ All commands run on the machine hosting the Paseo daemon. No separate JayJay ins
 paseo plugin install npm:paseo-jj-companion
 ```
 
-The plugin installs its locked dependencies automatically, using pnpm 12.13.0. To update:
+Installation and updates also require **Node.js 22.12+**, **npm**, and **pnpm** on the daemon's
+PATH. Paseo uses npm to download the package and check for updates; the plugin's setup installs its
+locked dependencies using pnpm 12.13.0. These tools are not invoked by normal plugin operations or
+reloads. To update:
 
 ```bash
 paseo plugin update jj-companion
@@ -67,11 +70,11 @@ pnpm format:check
 pnpm test
 ```
 
-- [Development notes and JayJay integration](docs/usage.md#development-notes)
+- [Development notes](docs/usage.md#development-notes)
 - [Release guide](docs/releases.md)
 - [Paseo API wishlist](docs/paseo-api-wishlist.md)
 
 ## License
 
-Apache-2.0; see [LICENSE](LICENSE). The vendored JayJay renderer retains its
-[license and attribution](client/vendor/jayjay/NOTICE.md).
+Apache-2.0; see [LICENSE](LICENSE). Third-party
+[licenses and attribution](client/vendor/jayjay/NOTICE.md) are included with the vendored renderer.

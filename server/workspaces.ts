@@ -86,10 +86,11 @@ async function getProject(projectId: string, listProjects: ListProjects) {
 
 export async function jjWorkspaceOptions(projectId: string, listProjects: ListProjects) {
   const project = await getProject(projectId, listProjects);
-  const directory = project && (await optionalRealpath(project.projectRootPath));
+  // Paseo already supplies isolation and base controls for Git projects.
+  if (!project || project.projectKind === "git") return null;
+  const directory = await optionalRealpath(project.projectRootPath);
   const root = directory && (await findJjRoot(directory));
-  if (!root) return null;
-  if (await optionalRealpath(join(root, ".git"))) return { kind: "colocated" as const };
+  if (!root || (await optionalRealpath(join(root, ".git")))) return null;
 
   const bookmarks = await listBookmarks(root);
   return {

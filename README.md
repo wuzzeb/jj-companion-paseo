@@ -52,10 +52,9 @@ Choose **Open jj review** in Paseo's Command Center.
 - Use **Refresh** to include new edits. The displayed diff stays pinned while you browse files.
 - Create a bookmark, **Tug** it to the workspace tip, then **Push**. Creating and tugging bookmarks
   uses the workspace tip, regardless of the selected graph row.
-- Choose **Local** to keep the current working copy, or **New worktree** for an isolated workspace.
+- For a colocated jj project, use Paseo's **Local** or **New worktree** controls.
 - For a jj-only project, use the **jj workspace** picker to choose **Local**, a new workspace from
-  the checkout's parents, or a new workspace from a bookmark such as `main`. For a colocated
-  project, enable **Non-colocated jj workspace** to create an isolated checkout without `.git`.
+  the checkout's parents, or a new workspace from a bookmark such as `main`.
 
 Archiving a plugin-managed workspace removes its directory, **including ignored files**. Restoring
 it in Paseo does not recreate those files.

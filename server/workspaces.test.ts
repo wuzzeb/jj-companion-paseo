@@ -69,7 +69,7 @@ async function repository(t: TestContext, colocated = true) {
   return paths;
 }
 
-function options(repo: string, workspacesRoot: string) {
+function options(repo: string, workspacesRoot: string, projectKind: "git" | "non_git" = "git") {
   return {
     signal: new AbortController().signal,
     workspacesRoot,
@@ -80,7 +80,7 @@ function options(repo: string, workspacesRoot: string) {
           projectId: "project",
           projectDisplayName: "My app",
           projectRootPath: repo,
-          projectKind: "git" as const,
+          projectKind,
         },
       ],
     }),
@@ -274,10 +274,10 @@ for (const colocated of [true, false]) {
 
   test(`can opt in to jj isolation from Local (${colocated ? "colocated" : "non-colocated"} source)`, async (t) => {
     const { repo, workspacesRoot } = await repository(t, colocated);
-    const workspaceOptions = options(repo, workspacesRoot);
-    assert.equal(
-      (await jjWorkspaceOptions("project", workspaceOptions.listProjects))?.kind,
-      colocated ? "colocated" : "non-colocated",
+    const workspaceOptions = options(repo, workspacesRoot, colocated ? "git" : "non_git");
+    assert.deepEqual(
+      await jjWorkspaceOptions("project", workspaceOptions.listProjects),
+      colocated ? null : { kind: "non-colocated", bookmarks: [] },
     );
     const request: PluginHookRequests["workspace.create.before"] = {
       source: { kind: "directory", path: join(repo, "package"), projectId: "project" },
@@ -316,7 +316,7 @@ test("creates a non-colocated workspace from the selected jj bookmark", async (t
   const { repo, workspacesRoot } = await repository(t, false);
   await jj(repo, "bookmark", "create", "main", "-r", "@-");
   await jj(repo, "new", "-m", "another change");
-  const workspaceOptions = options(repo, workspacesRoot);
+  const workspaceOptions = options(repo, workspacesRoot, "non_git");
   const main = { name: "main", remote: null };
   assert.deepEqual(await jjWorkspaceOptions("project", workspaceOptions.listProjects), {
     kind: "non-colocated",

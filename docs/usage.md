@@ -134,16 +134,10 @@ workspace that shares the checkout's parents, or **New from main** (or another l
 bookmark) to start at a bookmark. The picker lists bookmarks with a single target. New workspaces
 from this picker have no `.git` entry.
 
-For a colocated jj project, enable **Non-colocated jj workspace** to create an isolated checkout
-without `.git`. With **Local**, it starts from the checkout's parent revision(s). With **New
-worktree**, it uses the selected Git base. Use **Open jj review** to review changes in either
-layout. Paseo's built-in Git Changes panel needs a Git checkout.
-
-With the toggle off, **Local** opens the selected directory and **New worktree** creates a jj
-workspace based on the selected Git branch. Colocation then follows jj's defaults. A colocated
-source with `git.colocate = true` produces a Git worktree alongside the jj workspace. A
-non-colocated source produces a non-colocated workspace. Git-only repositories and ordinary
-directories use Paseo's own workflow.
+For a colocated jj project, use Paseo's built-in **Local** and **New worktree** controls.
+**Local** opens the selected directory. **New worktree** creates a jj workspace at the selected
+Git base. Colocation follows jj's `git.colocate` setting. Use **Open jj review** to review changes
+in either layout. Paseo's built-in Git Changes panel needs a Git checkout.
 
 Each workspace lives at:
 
@@ -159,8 +153,8 @@ Paseo project membership and any working subdirectory are preserved. Existing wo
 names and can still be archived normally.
 
 New jj workspaces without a base share the source workspace's parent revision(s), just like plain
-`jj workspace add`. With the toggle off, **Local** uses the existing working copy, including its
-uncommitted changes, and skips the plugin's setup commands.
+`jj workspace add`. **Local** uses the existing working copy, including its uncommitted changes,
+and skips the plugin's setup commands.
 
 In Paseo's Worktree mode, the base picker lists Git branches for colocated projects. The plugin
 resolves the selected `refName` (or CLI `baseBranch`) to a commit in the backing Git store and

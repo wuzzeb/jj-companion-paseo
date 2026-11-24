@@ -1,5 +1,5 @@
 import { useNewWorkspace, useRpc } from "@getpaseo/plugin/client";
-import { Combobox, Toggle } from "@getpaseo/plugin/client/ui";
+import { Combobox } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import {
   jjWorkspaceOptionsRpc,
@@ -28,19 +28,6 @@ export function JjWorkspacePicker() {
   if (!options) return null;
 
   const base = workspaceBaseSchema.safeParse(metadata[nonColocatedWorkspaceKey]).data;
-  if (options.kind === "colocated") {
-    return (
-      <Toggle
-        title="Non-colocated jj workspace"
-        icon="GitBranch"
-        value={base !== undefined}
-        onValueChange={({ value }) =>
-          setMetadata({ [nonColocatedWorkspaceKey]: value ? "default" : null })
-        }
-      />
-    );
-  }
-
   const selection =
     base === undefined ? local : base === "default" ? parents : bookmarkOption(base);
   return (

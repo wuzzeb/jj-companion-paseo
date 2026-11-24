@@ -13,14 +13,10 @@ export const jjWorkspaceOptionsRpc = defineRpc({
   name: "workspaces.options",
   input: z.object({ projectId: z.string().min(1) }),
   output: z
-    .discriminatedUnion("kind", [
-      z.object({ kind: z.literal("colocated") }).readonly(),
-      z
-        .object({
-          kind: z.literal("non-colocated"),
-          bookmarks: z.array(bookmarkBaseSchema).readonly(),
-        })
-        .readonly(),
-    ])
+    .object({
+      kind: z.literal("non-colocated"),
+      bookmarks: z.array(bookmarkBaseSchema).readonly(),
+    })
+    .readonly()
     .nullable(),
 });

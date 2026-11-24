@@ -17,6 +17,20 @@ const commitSchema = revisionSchema.extend({ parents: z.array(z.string()), empty
 const bookmarkTemplate =
   'json({"name" => name, "remote" => remote, "tracked" => tracked, "conflict" => conflict, "targets" => added_targets.filter(|c| json(c) != "null").map(|c| c.commit_id())}) ++ "\\n"';
 
+export async function listBookmarks(
+  root: string,
+  options?: { readonly operation?: string; readonly signal?: AbortSignal },
+) {
+  return z
+    .array(bookmarkSchema)
+    .readonly()
+    .parse(
+      jsonLines(
+        await runJj(root, ["bookmark", "list", "--all-remotes", "-T", bookmarkTemplate], options),
+      ),
+    );
+}
+
 async function revisions(root: string, revset: string, operation = "@", signal?: AbortSignal) {
   return z.array(commitSchema).parse(
     jsonLines(
@@ -42,14 +56,7 @@ export async function readBookmarkState(
   const [target] = usesParent
     ? await revisions(root, workingCopy.parents[0], operation, signal)
     : [workingCopy];
-  const bookmarks = z.array(bookmarkSchema).parse(
-    jsonLines(
-      await runJj(root, ["bookmark", "list", "--all-remotes", "-T", bookmarkTemplate], {
-        operation,
-        signal,
-      }),
-    ),
-  );
+  const bookmarks = await listBookmarks(root, { operation, signal });
   const nearest = new Set(
     (
       await revisions(

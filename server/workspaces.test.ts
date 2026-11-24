@@ -17,7 +17,13 @@ import { after, test, type TestContext } from "node:test";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import type { PluginHookRequests, PluginHookContext } from "@getpaseo/plugin/server";
-import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./workspaces.js";
+import { nonColocatedWorkspaceKey } from "../shared/workspaces.js";
+import {
+  archiveWorkspace,
+  configureCodexAgent,
+  createWorkspace,
+  jjWorkspaceOptions,
+} from "./workspaces.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
 import { readCodexWritableRoots } from "./codex-config.js";
 
@@ -265,7 +271,71 @@ for (const colocated of [true, false]) {
       code: "ENOENT",
     });
   });
+
+  test(`can opt in to jj isolation from Local (${colocated ? "colocated" : "non-colocated"} source)`, async (t) => {
+    const { repo, workspacesRoot } = await repository(t, colocated);
+    const workspaceOptions = options(repo, workspacesRoot);
+    assert.equal(
+      (await jjWorkspaceOptions("project", workspaceOptions.listProjects))?.kind,
+      colocated ? "colocated" : "non-colocated",
+    );
+    const request: PluginHookRequests["workspace.create.before"] = {
+      source: { kind: "directory", path: join(repo, "package"), projectId: "project" },
+      metadata: { [nonColocatedWorkspaceKey]: "default", "other-plugin.issue": "42" },
+    };
+    const result = await createWorkspace({
+      ...workspaceOptions,
+      request,
+      generateName: () => "quiet-otter",
+    });
+    const destination = join(workspacesRoot, "My-app-quiet-otter");
+    assert.deepEqual(result, {
+      title: "quiet-otter",
+      source: { kind: "directory", path: join(destination, "package"), projectId: "project" },
+      metadata: { "other-plugin.issue": "42" },
+    });
+    assert.equal(await jj(destination, "workspace", "root", "--name", "quiet-otter"), destination);
+    assert.equal(await readFile(join(destination, "base.txt"), "utf8"), "committed\n");
+    await assert.rejects(readFile(join(destination, ".git")), { code: "ENOENT" });
+    const agent = await configureCodexAgent({
+      request: { config: { provider: "codex", cwd: destination } },
+      signal: workspaceOptions.signal,
+      readWritableRoots: async () => [],
+    });
+    assert.deepEqual(agent.config.providerOptions, {
+      sandbox_workspace_write: {
+        writable_roots: [join(repo, ".jj"), ...(colocated ? [join(repo, ".git")] : [])],
+      },
+    });
+    await archiveWorkspace(archiveOptions(join(destination, "package"), workspacesRoot));
+    await assert.rejects(readdir(destination), { code: "ENOENT" });
+  });
 }
+
+test("creates a non-colocated workspace from the selected jj bookmark", async (t) => {
+  const { repo, workspacesRoot } = await repository(t, false);
+  await jj(repo, "bookmark", "create", "main", "-r", "@-");
+  await jj(repo, "new", "-m", "another change");
+  const workspaceOptions = options(repo, workspacesRoot);
+  const main = { name: "main", remote: null };
+  assert.deepEqual(await jjWorkspaceOptions("project", workspaceOptions.listProjects), {
+    kind: "non-colocated",
+    bookmarks: [main],
+  });
+  const result = await createWorkspace({
+    ...workspaceOptions,
+    request: {
+      source: { kind: "directory", path: repo, projectId: "project" },
+      metadata: { [nonColocatedWorkspaceKey]: main },
+    },
+  });
+  assert.equal(result.source.kind, "directory");
+  assert.equal(await readFile(join(result.source.path, "base.txt"), "utf8"), "committed\n");
+  assert.equal(
+    await jj(result.source.path, "log", "--no-graph", "-r", "@-", "-T", "commit_id"),
+    await jj(repo, "log", "--no-graph", "-r", "main", "-T", "commit_id"),
+  );
+});
 
 test("New worktree creates a registered jj workspace from the source parents and uses its name as the title", async (t) => {
   const { repo, workspacesRoot } = await repository(t);

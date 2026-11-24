@@ -4,6 +4,16 @@ Originally recorded November 11, 2026; rechecked against the local Paseo 0.16.1 
 November 17. The three renderer/navigation requests below remain unavailable in the public SDK. Keep
 the JayJay renderer until a supported alternative is useful enough to replace it.
 
+## Paseo 0.17 assessment
+
+The plugin uses the 0.17.4 SDK. Its New workspace picker lets jj-only projects choose Local or
+create an isolated workspace from the checkout's parents or a jj bookmark. The plugin passes the
+choice through `workspace.create.before`. Paseo's 0.17 worktree manager callbacks cover
+creation, removal, and restoration. Adoption still requires a Git worktree sharing the source
+repository's Git common directory, with an attached branch on creation. The built-in isolation
+and base pickers also depend on Git. A native jj lifecycle would need Paseo to support a
+plugin-managed directory and non-Git base selection. See [worktree manager adoption](https://github.com/getpaseo/paseo/blob/v0.17.4/packages/server/src/utils/worktree.ts).
+
 ## Paseo 0.16 assessment
 
 The plugin now pins all four direct `@getpaseo/*` development packages to 0.16.1 and requires Paseo

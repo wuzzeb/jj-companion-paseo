@@ -10,7 +10,7 @@ Jujutsu workspaces, change history, bookmarks, and diff review for Paseo.
   syntax highlighting and expandable context.
 - **Change graph:** browse history, descriptions, bookmarks, workspace labels, and conflicts.
 - **Bookmarks:** create, tug, track, fetch, and push from the review tab.
-- **Isolated workspaces:** create jj workspaces through Paseo's **New worktree** picker, with
+- **Isolated workspaces:** create jj workspaces with or without Git colocation, with
   optional setup and teardown scripts.
 - **Repository switching:** review separate jj repositories in immediate child directories.
 - **Persistent layout:** resizable columns, tree/list file views, and saved tab selections.
@@ -20,7 +20,7 @@ The review interface works on desktop and web; native mobile diff review is not 
 
 ## Requirements
 
-- Paseo **0.16.0+**, with `pluginsEnabled: true` in its config.
+- Paseo **0.17.1+**, with `pluginsEnabled: true` in its config.
 - **jj 0.46.0+** and **Git 2.42+** on the daemon's PATH for normal use.
 - A jj repository, colocated or non-colocated.
 
@@ -53,6 +53,9 @@ Choose **Open jj review** in Paseo's Command Center.
 - Create a bookmark, **Tug** it to the workspace tip, then **Push**. Creating and tugging bookmarks
   uses the workspace tip, regardless of the selected graph row.
 - Choose **Local** to keep the current working copy, or **New worktree** for an isolated workspace.
+- For a jj-only project, use the **jj workspace** picker to choose **Local**, a new workspace from
+  the checkout's parents, or a new workspace from a bookmark such as `main`. For a colocated
+  project, enable **Non-colocated jj workspace** to create an isolated checkout without `.git`.
 
 Archiving a plugin-managed workspace removes its directory, **including ignored files**. Restoring
 it in Paseo does not recreate those files.

@@ -4,7 +4,7 @@
   "description": "Jujutsu workspaces, change history, bookmark management, and side-by-side diff review for Paseo.",
   "media": ["assets/review.png"],
   "requirements": {
-    "paseo": ">=0.16.0"
+    "paseo": ">=0.17.1"
   },
   "build": [
     [

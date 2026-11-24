@@ -3,7 +3,13 @@ import { createReviews } from "./server/review.js";
 import { reviewOpenRpc, reviewFileRpc } from "./shared/review.js";
 import { repositoriesRpc } from "./shared/repositories.js";
 import { listRepositories } from "./server/repository.js";
-import { archiveWorkspace, configureCodexAgent, createWorkspace } from "./server/workspaces.js";
+import {
+  archiveWorkspace,
+  configureCodexAgent,
+  createWorkspace,
+  jjWorkspaceOptions,
+} from "./server/workspaces.js";
+import { jjWorkspaceOptionsRpc } from "./shared/workspaces.js";
 import { listHistory } from "./server/history.js";
 import { historyRpc } from "./shared/history.js";
 import {
@@ -23,6 +29,9 @@ export default function contribute(server: PluginServerContext) {
     if (!workspace) throw new Error("Workspace is unavailable.");
     return listRepositories(workspace.workspaceDirectory);
   });
+  server.handle(jjWorkspaceOptionsRpc, ({ projectId }, { paseo }) =>
+    jjWorkspaceOptions(projectId, paseo.projects.list),
+  );
   server.handle(bookmarkStateRpc, bookmarks.state);
   server.handle(bookmarkActionRpc, bookmarks.start);
   server.handle(bookmarkOperationSubscription, bookmarks.watch);

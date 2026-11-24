@@ -128,12 +128,22 @@ remain enabled, including description, conflict, and remote-update checks.
 
 ## Workspace creation
 
-Colocation follows jj's defaults: a colocated source and `git.colocate = true` produce a Git
-worktree alongside the jj workspace. Non-colocated sources remain non-colocated.
+Select a non-colocated jj project on Paseo's **New workspace** screen and use **jj workspace**.
+Choose **Local** to use the existing checkout, **New from checkout parents** for an isolated
+workspace that shares the checkout's parents, or **New from main** (or another local or remote jj
+bookmark) to start at a bookmark. The picker lists bookmarks with a single target. New workspaces
+from this picker have no `.git` entry.
 
-It follows Paseo's isolation picker: **Local** uses the selected directory without creating a jj
-workspace; **New worktree** creates a jj workspace inside a jj repository, based on the selected Git
-branch. Git-only repositories and ordinary directories keep Paseo's behavior.
+For a colocated jj project, enable **Non-colocated jj workspace** to create an isolated checkout
+without `.git`. With **Local**, it starts from the checkout's parent revision(s). With **New
+worktree**, it uses the selected Git base. Use **Open jj review** to review changes in either
+layout. Paseo's built-in Git Changes panel needs a Git checkout.
+
+With the toggle off, **Local** opens the selected directory and **New worktree** creates a jj
+workspace based on the selected Git branch. Colocation then follows jj's defaults. A colocated
+source with `git.colocate = true` produces a Git worktree alongside the jj workspace. A
+non-colocated source produces a non-colocated workspace. Git-only repositories and ordinary
+directories use Paseo's own workflow.
 
 Each workspace lives at:
 
@@ -148,10 +158,9 @@ Names are generated independently of Paseo's workspace ID, with retries on colli
 Paseo project membership and any working subdirectory are preserved. Existing workspaces keep their
 names and can still be archived normally.
 
-New worktree requests without a base share the source workspace's parent revision(s), just like
-plain `jj workspace add`. They do not include changes from the source working copy. Local uses the
-existing working copy, including its uncommitted changes, and does not run the plugin's setup
-commands.
+New jj workspaces without a base share the source workspace's parent revision(s), just like plain
+`jj workspace add`. With the toggle off, **Local** uses the existing working copy, including its
+uncommitted changes, and skips the plugin's setup commands.
 
 In Paseo's Worktree mode, the base picker lists Git branches for colocated projects. The plugin
 resolves the selected `refName` (or CLI `baseBranch`) to a commit in the backing Git store and
@@ -159,18 +168,21 @@ passes it to `jj workspace add -r`. Qualified refs distinguish local and remote 
 `main` prefers local main, then origin/main. Remote refs use their locally cached state; the plugin
 does not fetch. A missing base fails creation instead of falling back to another revision.
 
-Selecting a base creates a new jj workspace on that commit, without creating a named Git branch or
-jj bookmark. Git branch/PR checkout requests remain unsupported. The picker shows Git refs, not
-arbitrary jj changes or revset expressions; non-colocated projects may not offer it in the UI.
+The CLI can request the same workspace creation hook from a non-colocated checkout with
+`paseo workspace create --isolation worktree --path .`. CLI requests use jj's colocation defaults.
+
+Selecting a base creates a new jj workspace on that commit and leaves existing Git branches and
+jj bookmarks in place. The built-in base picker is limited to Git refs. The plugin picker uses jj
+bookmarks. Git branch and pull request checkout requests remain unsupported.
 
 ## Setup, teardown, and cleanup
 
-The plugin uses `server.addHook("workspace.create.before")` to run `jj workspace add`, then gives
-Paseo the resulting directory. Paseo 0.16's `worktree.create.before` hook changes Git creation
-options but still requires Paseo to run `git worktree add`; it cannot replace creation with
-`jj workspace add`. The plugin therefore keeps jj creation in `workspace.create.before`, including
-its own awaited setup. Paseo's `worktree.create.after` hook and built-in `.worktreeinclude` copying
-do not run for these jj workspaces. Use `worktree.setup` to copy any local files they need.
+The plugin creates the jj workspace in `workspace.create.before`, runs setup, then hands the
+resulting directory to Paseo. Paseo 0.17's worktree manager API requires an attached Git branch in
+a worktree from the source repository. The directory hook supports jj's non-colocated workspaces
+and its normal detached HEAD in colocated workspaces. Use `worktree.setup` to copy local files
+into a jj workspace. Paseo runs `.worktreeinclude` copying and its `worktree.create.after` hook
+only during its Git worktree creation flow.
 
 Configure repository lifecycle commands in `paseo.json`:
 
@@ -220,8 +232,8 @@ Archive events are best effort. A missed event or failed removal leaves the dire
 failures appear in `paseo plugin logs jj-companion`. There is no automatic retry after a missed
 event. If ownership-marker creation fails, the plugin attempts to remove its new jj workspace
 immediately. A later Paseo failure can still leave an orphan: the before-hook has no callback for
-that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep. Paseo
-0.16's archive Undo and restore actions do not recreate a directory removed by this plugin.
+that failure. Such workspaces require manual cleanup; the plugin does not run an orphan sweep.
+Recover removed jj workspace directories through jj before reopening them in Paseo.
 
 Paseo limits hook invocations to 30 seconds in total. The plugin passes the cancellation signal to
 jj and lifecycle commands, and caps each command at 25 seconds. Keep setup and teardown within that
@@ -237,7 +249,8 @@ and PR workflows retain the limitations of jj's detached Git HEAD.
 For Codex agents opened in a jj workspace, the `agent.create.before` hook adds the shared `.jj`
 directory, the common Git directory, and the exact Git worktree directory to
 `sandbox_workspace_write.writable_roots`. Codex protects a `.git` pointer's destination even when
-its parent is writable, so the exact worktree directory is necessary.
+its parent is writable, so the exact worktree directory is necessary. A non-colocated workspace
+also receives access to a shared Git store when that store lives outside `.jj`.
 
 Writable-root arrays replace each other in Codex. To preserve configured roots such as pnpm caches,
 the hook first reads Codex's effective user/project configuration through a short-lived

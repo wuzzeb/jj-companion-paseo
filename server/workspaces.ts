@@ -7,6 +7,12 @@ import type {
   PluginHookContext,
   PluginHookWorkspace,
 } from "@getpaseo/plugin/server";
+import {
+  nonColocatedWorkspaceKey,
+  workspaceBaseSchema,
+  type WorkspaceBookmarkBase,
+} from "../shared/workspaces.js";
+import { listBookmarks } from "./bookmarks.js";
 import { createNameId } from "./names.js";
 import { runWorktreeLifecycle } from "./lifecycle.js";
 import { readCodexWritableRoots } from "./codex-config.js";
@@ -25,6 +31,7 @@ const markerName = "paseo-jj-companion.json";
 // Workspaces created before the rename remain owned by this plugin.
 const legacyMarkerName = "paseo-jj-workspace-plugin.json";
 type WorkspaceRequest = PluginHookRequests["workspace.create.before"];
+type ListProjects = PluginHookContext["paseo"]["projects"]["list"];
 type ListWorkspaces = PluginHookContext["paseo"]["workspaces"]["list"];
 type WorkspaceListResult = Awaited<ReturnType<ListWorkspaces>>;
 type WorkspacePage = Pick<WorkspaceListResult, "pageInfo"> & {
@@ -37,7 +44,7 @@ type WorkspaceListOptions = NonNullable<Parameters<ListWorkspaces>[0]>;
 interface CreateWorkspaceOptions {
   readonly request: WorkspaceRequest;
   readonly signal: AbortSignal;
-  readonly listProjects: PluginHookContext["paseo"]["projects"]["list"];
+  readonly listProjects: ListProjects;
   readonly workspacesRoot?: string;
   readonly generateName?: () => string;
   readonly writeMarker?: typeof writeFile;
@@ -70,6 +77,27 @@ async function optionalRealpath(path: string): Promise<string | null> {
     if (hasCode(error, "ENOENT")) return null;
     throw error;
   }
+}
+
+async function getProject(projectId: string, listProjects: ListProjects) {
+  const { projects } = await listProjects();
+  return projects.find((project) => project.projectId === projectId);
+}
+
+export async function jjWorkspaceOptions(projectId: string, listProjects: ListProjects) {
+  const project = await getProject(projectId, listProjects);
+  const directory = project && (await optionalRealpath(project.projectRootPath));
+  const root = directory && (await findJjRoot(directory));
+  if (!root) return null;
+  if (await optionalRealpath(join(root, ".git"))) return { kind: "colocated" as const };
+
+  const bookmarks = await listBookmarks(root);
+  return {
+    kind: "non-colocated" as const,
+    bookmarks: bookmarks
+      .filter((bookmark) => !bookmark.conflict && bookmark.targets.length === 1)
+      .map(({ name, remote }) => ({ name, remote })),
+  };
 }
 
 async function resolveWorkspacePath(path: string): Promise<string> {
@@ -133,7 +161,8 @@ export async function configureCodexAgent({
   if (!root) return request;
 
   const repo = await sharedRepositoryPath(root);
-  const roots = [dirname(repo)];
+  const sharedRoot = dirname(repo);
+  const roots = [sharedRoot];
   if (await optionalRealpath(join(root, ".git"))) {
     const stdout = await runSubprocess(
       "git",
@@ -147,6 +176,23 @@ export async function configureCodexAgent({
       { cwd: root, signal, timeoutMs: 25_000, maxOutputBytes: 1024 * 1024 },
     );
     for (const path of stdout.trim().split("\n")) roots.push(await realpath(path));
+  } else {
+    // A workspace without .git can still share a Git store outside .jj.
+    const gitRoot = await jj(root, signal, "git", "root", "--ignore-working-copy").catch(
+      (error: unknown) => {
+        if (
+          error instanceof Error &&
+          hasCode(error, 1) &&
+          error.message === "Error: The repo is not backed by a Git repo"
+        )
+          return null;
+        throw error;
+      },
+    );
+    if (gitRoot) {
+      const backingStore = await realpath(gitRoot);
+      if (!contains(sharedRoot, backingStore)) roots.push(backingStore);
+    }
   }
 
   const options = request.config.providerOptions;
@@ -212,6 +258,18 @@ async function resolveBaseRevision(
   );
 }
 
+async function resolveBookmarkBase(root: string, base: WorkspaceBookmarkBase, signal: AbortSignal) {
+  const bookmarks = await listBookmarks(root, { signal });
+  const bookmark = bookmarks.find(
+    ({ name, remote }) => name === base.name && remote === base.remote,
+  );
+  if (!bookmark || bookmark.conflict || bookmark.targets.length !== 1) {
+    const label = base.remote ? `${base.name}@${base.remote}` : base.name;
+    throw new Error(`jj bookmark “${label}” must resolve to a single change. Choose another base.`);
+  }
+  return bookmark.targets[0];
+}
+
 async function reserveDirectory(
   root: string,
   projectName: string,
@@ -242,45 +300,53 @@ export async function createWorkspace({
 }: CreateWorkspaceOptions): Promise<WorkspaceRequest> {
   signal.throwIfAborted();
   const source = request.source;
-  // Paseo's Local choice uses the selected directory as-is; only New worktree
-  // requests should allocate a jj workspace.
-  if (source.kind !== "worktree") return request;
-  let sourcePath = source.cwd;
-  async function getProject() {
+  const { [nonColocatedWorkspaceKey]: selection, ...metadata } = request.metadata ?? {};
+  const nonColocated = workspaceBaseSchema.optional().parse(selection);
+  if (source.kind === "directory" && !nonColocated) return request;
+
+  const sourcePath = source.kind === "directory" ? source.path : source.cwd;
+  async function requireSourceProject() {
     if (!source.projectId) return undefined;
-    const { projects } = await listProjects();
-    const project = projects.find((candidate) => candidate.projectId === source.projectId);
+    const project = await getProject(source.projectId, listProjects);
     if (!project) throw new Error(`Unknown Paseo project: ${source.projectId}`);
     return project;
   }
-  // Project-only worktree requests have no cwd; resolve it through the public SDK.
-  let project = sourcePath ? undefined : await getProject();
-  sourcePath ??= project?.projectRootPath;
-  if (!sourcePath) return request;
+  let project = sourcePath ? undefined : await requireSourceProject();
+  const directoryPath = sourcePath ?? project?.projectRootPath;
+  if (!directoryPath) return request;
 
-  const cwd = await realpath(expandHome(sourcePath));
+  const cwd = await realpath(expandHome(directoryPath));
   const jjRoot = await findJjRoot(cwd);
-  if (!jjRoot) return request;
-  project ??= await getProject();
-
-  if (
-    source.action === "checkout" ||
-    source.checkoutSource ||
-    source.githubPrNumber !== undefined
-  ) {
-    throw new Error(
-      "paseo-jj-companion cannot check out Git branches or pull requests; create a new workspace instead.",
-    );
+  if (!jjRoot) {
+    if (nonColocated) throw new Error("Select a directory inside a jj repository.");
+    return request;
   }
+  project ??= await requireSourceProject();
 
-  if (source.branchName) {
-    console.info(
-      "paseo-jj-companion creates a jj workspace without creating a new Git branch or jj bookmark.",
-    );
+  let revision: string | undefined;
+  if (source.kind === "worktree") {
+    if (
+      source.action === "checkout" ||
+      source.checkoutSource ||
+      source.githubPrNumber !== undefined
+    ) {
+      throw new Error(
+        "paseo-jj-companion cannot check out Git branches or pull requests; create a new workspace instead.",
+      );
+    }
+    if (source.branchName) {
+      console.info(
+        "paseo-jj-companion creates a jj workspace without creating a new Git branch or jj bookmark.",
+      );
+    }
+    const base = source.refName?.trim() || source.baseBranch?.trim();
+    if (base && typeof nonColocated !== "object") {
+      revision = await resolveBaseRevision(jjRoot, signal, base);
+    }
   }
-
-  const base = source.refName?.trim() || source.baseBranch?.trim();
-  const revision = base ? await resolveBaseRevision(jjRoot, signal, base) : undefined;
+  if (typeof nonColocated === "object") {
+    revision = await resolveBookmarkBase(jjRoot, nonColocated, signal);
+  }
 
   const projectName =
     basename(project?.projectRootPath ?? jjRoot)
@@ -309,6 +375,7 @@ export async function createWorkspace({
       "add",
       "--name",
       name,
+      ...(nonColocated ? ["--no-colocate"] : []),
       ...(revision ? ["-r", revision] : []),
       directory,
     );
@@ -352,6 +419,7 @@ export async function createWorkspace({
 
   return {
     ...request,
+    ...(nonColocated ? { metadata } : {}),
     // An explicit title keeps Paseo's task auto-naming from replacing the jj name.
     title: name,
     source: {
